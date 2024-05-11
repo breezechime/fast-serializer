@@ -9,7 +9,7 @@ from types import MemberDescriptorType, GenericAlias, FunctionType
 from typing import ClassVar, Dict, dataclass_transform, Type, Any, List
 from .constants import (_T, _DATACLASS_CONFIG_NAME, _DATACLASS_FIELDS_NAME, _BASE_FIELD,
                         _MODULE_IDENTIFIER_RE, InitVar, _FIELD_CLASS_VAR, _FIELD_INIT_VAR, _FAST_DATACLASS_DECORATORS_NAME)
-from .data_config import DataConfig
+from .dataclass_config import DataclassConfig
 from .decorators import FastDataclassDecoratorInfo
 from .field import Field
 from .serializer import FastSerializer
@@ -207,7 +207,7 @@ def _generate_field(cls, field_name: str, field_type) -> Field:
         setattr(cls, field_name, _field)  # 保留Field在未实例的数据类上
 
     _field.name = field_name
-    _field.type = field_type
+    _field.set_type(field_type)
 
     # 接下来是对InitVar和ClassVar的支持
 
@@ -356,9 +356,9 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
         _globals = {}
 
     # 设置快速数据类的配置
-    dataclass_config = getattr(cls, _DATACLASS_CONFIG_NAME, DataConfig())
+    dataclass_config = getattr(cls, _DATACLASS_CONFIG_NAME, DataclassConfig())
     if dataclass_config is None:
-        dataclass_config = DataConfig()
+        dataclass_config = DataclassConfig()
         setattr(cls, _DATACLASS_CONFIG_NAME, dataclass_config)
 
     # Find our base classes in reverse MRO order, and exclude
@@ -482,7 +482,7 @@ class FastDataclass(metaclass=FastDataclassMeta):
     """Base class for creating fast dataclass 用于创建快速数据类的基类"""
 
     """Configuration for the dataclass"""
-    dataclass_config: ClassVar[DataConfig] = DataConfig()
+    dataclass_config: ClassVar[DataclassConfig] = DataclassConfig()
 
     """The metadata of the fields defined on the dataclass 在数据类上定义的字段的元数据"""
     dataclass_fields: ClassVar[Dict[str, Field]]

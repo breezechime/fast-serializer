@@ -1,5 +1,7 @@
 # -*- coding:utf-8 -*-
 from types import MappingProxyType
+from typing import Optional
+
 from .constants import _EMPTY_METADATA, _DEFAULT_FACTORY
 from .utils import _recursive_repr, _format_type
 from dataclasses import MISSING
@@ -33,6 +35,11 @@ class Field(object):
         self.compare = compare
         self.metadata = _EMPTY_METADATA if metadata is None else MappingProxyType(metadata)
         self.description = description
+
+    def set_type(self, _type):
+        if _type is Optional:
+            raise RuntimeError("Optional 必须添加内部类型")
+        self.type = _type
 
     @_recursive_repr
     def __repr__(self):

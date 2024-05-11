@@ -3,6 +3,8 @@
 用于将 Python 数据类对象序列化为 JSON 数据格式，也可以将JSON字典/字符串反序列化为 Python数据类对象。
 原则上来说FastSerializer可以序列化任意对象。
 
+# 注意：当前快速序列化器还未完成，请等此消息没有后再使用，但是可以进行测试。
+
 ## ✨ 特点
 
 * **🚀快速**：在Python提供非常高的性能因为它使用了dataclass，并且FastSerializer非常轻量，不占用太多空间。
@@ -56,7 +58,7 @@ fast_serializer
 │  README.md 阅读文件
 └─fast_serializer 主包
     │  constants.py 常量定义
-    │  data_config.py 数据类的配置
+    │  dataclass_config.py 数据类的配置
     │  decorators.py 装饰器
     │  exceptions.py 异常
     │  fast_dataclass.py 快速数据类

@@ -3,7 +3,7 @@ import dataclasses
 
 
 @dataclasses.dataclass
-class DataConfig(object):
+class DataclassConfig(object):
     """数据类配置"""
 
     """"""
