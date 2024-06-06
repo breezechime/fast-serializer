@@ -1,24 +1,42 @@
 # -*- coding:utf-8 -*-
 import datetime
+import decimal
 import enum
 from typing import Any
+
+from .type_parser import type_parser
+from .constants import _T
 from decimal import Decimal
 
 
 class Validator:
+    """验证器基类"""
 
-    validator_type: type
+    target_type: _T = None
 
-    @classmethod
-    def validate(cls, value: Any):
-        return cls.validator_type(value)
+    def validate(self, value, **kwargs):
+        pass
+
+    def get_name(self):
+        return self.target_type
 
 
 class StringValidator(Validator):
     """字符串验证器"""
 
-    validator_type = str
+    target_type = str
 
+    def validate(self, value, allow_number: bool = True, **kwargs):
+        if type_parser.isinstance_safe(value, self.target_type):
+            return value
+        elif type_parser.isinstance_safe(value, bytes):
+            return value.decode('utf-8')
+        elif type_parser.isinstance_safe(value, bytearray):
+            return value.decode('utf-8')
+        elif allow_number and type_parser.isinstance_safe(value, (int, float, decimal.Decimal, bool, enum.Enum)):
+            return self.target_type(value)
+
+        raise ValueError('Input should be string')
 
 class BoolValidator(Validator):
     """布尔验证器"""
@@ -104,7 +122,7 @@ class EnumValidator(Validator):
 
 
 DEFAULT_VALIDATORS = {
-    str: StringValidator,
+    str: StringValidator(),
     bool: BoolValidator,
     int: IntegerValidator,
     float: FloatValidator,

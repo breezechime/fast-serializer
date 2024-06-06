@@ -1,5 +1,8 @@
+import decimal
+import enum
 from typing import List, Dict, Optional
 from fast_serializer import FastDataclass, field
+from fast_serializer.validator import StringValidator
 
 
 class Address(FastDataclass):
@@ -16,7 +19,11 @@ class User(FastDataclass):
     # address_list: List[Address]
 
 
-print(User.dataclass_fields)
+# print(User.dataclass_fields)
+
+# if isinstance(123, (int, float, decimal.Decimal, enum.Enum, bool)):
+#     print(123)
+# print(StringValidator().validate(123, allow_number=True))
 # 数据
 # data = {'nickname': 'Lao Da', 'address_list': [{'detail_address': 'China'}]}
 #

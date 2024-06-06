@@ -4,7 +4,6 @@ import types
 from types import MappingProxyType
 from typing import TypeVar
 
-
 """用于类型标注 Used for type annotation"""
 _T = TypeVar('_T')
 
@@ -67,7 +66,6 @@ _POST_INIT_NAME = '__post_init__'
 
 
 # String regex that string annotations for ClassVar or InitVar must match.
-# Allows "identifier.identifier[" or "identifier[".
 # https://bugs.python.org/issue33453 for details.
 _MODULE_IDENTIFIER_RE = re.compile(r'^(?:\s*(\w+)\s*\.)?\s*(\w+)')
 
