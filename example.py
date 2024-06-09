@@ -1,8 +1,11 @@
+import abc
 import decimal
 import enum
+import time
+import typing
 from typing import List, Dict, Optional
 from fast_serializer import FastDataclass, field
-from fast_serializer.validator import StringValidator
+from fast_serializer.validator import StringValidator, BytesValidator, BoolValidator, IntegerValidator
 
 
 class Address(FastDataclass):
@@ -19,6 +22,14 @@ class User(FastDataclass):
     # address_list: List[Address]
 
 
+class Test(enum.Enum):
+    COLOR = 'red'
+
+
+# print(IntegerValidator().validate('123'))
+# print(BoolValidator().validate('yes'))
+# print(issubclass(tuple, typing.Collection))
+# print(isinstance(decimal.Decimal('11'), decimal.Decimal))
 # print(User.dataclass_fields)
 
 # if isinstance(123, (int, float, decimal.Decimal, enum.Enum, bool)):
