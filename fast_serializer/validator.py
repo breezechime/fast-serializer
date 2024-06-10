@@ -8,6 +8,7 @@ from typing import Any, Deque, Generator
 from .constants import _T
 from .type_parser import type_parser
 from .types import optional
+from .utils import _format_type
 
 
 class Validator(ABC):
@@ -18,6 +19,7 @@ class Validator(ABC):
 
     @abstractmethod
     def validate(self, value, **kwargs):
+        """验证数据并返回正确数据或抛出异常"""
         pass
 
     def is_instance(self, value, target_type=None) -> bool:
@@ -26,6 +28,9 @@ class Validator(ABC):
 
     def get_name(self) -> str:
         return self.name
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(\n\tname: {self.name},\n\ttarget_type: {self.target_type}\n)"
 
 
 class AnyValidator(Validator):
@@ -58,13 +63,15 @@ class StringValidator(Validator):
         raise ValueError('Input should be string')
 
     @classmethod
-    def maybe_str(cls, value) -> optional[str]:
+    def maybe_str(cls, value, raise_error: bool = True) -> optional[str]:
         if type_parser.isinstance_safe(value, cls.target_type):
             return value
         elif type_parser.isinstance_safe(value, BytesValidator.target_type):
             try:
                 return value.decode('utf-8')
             except UnicodeDecodeError:
+                if not raise_error:
+                    return False
                 raise ValueError('Input should be string')
         return None
 
@@ -205,14 +212,19 @@ class BytesValidator(Validator):
             return self.target_type(value)
 
 
-# TODO
 class TargetTypeValidator(Validator):
     """目标类型验证器"""
 
     name = 'target_type'
 
+    def __init__(self, target_type: _T):
+        self.target_type = target_type
+        self.name = _format_type(target_type)
+
     def validate(self, value, **kwargs):
-        pass
+        if type_parser.isinstance_safe(value, self.target_type):
+            return value
+        raise ValueError(f'Input should be {self.name}')
 
 
 # TODO
@@ -220,6 +232,9 @@ class UnionValidator(Validator):
     """联合类型验证器"""
 
     name = 'union'
+
+    def __init__(self, validators=None):
+        self.validators = validators or []
 
     def validate(self, value, **kwargs):
         pass
@@ -412,18 +427,34 @@ class DequeValidator(Validator):
         return cls.validator_type(value)
 
 
-# TODO
 class UuidValidator(Validator):
     """UUID类型验证器"""
 
     name = 'uuid'
     target_type = uuid.UUID
 
-    def validate(self, value, **kwargs):
-        if type_parser.isinstance_safe(value, self.target_type):
-            return value
+    def __init__(self, version: optional[int] = None):
+        self.version: optional[int] = version
 
-        raise ValueError('Input should be UUID')
+    def validate(self, value, **kwargs) -> uuid.UUID:
+        if type_parser.isinstance_safe(value, self.target_type):
+            self.check_version(value, self.version)
+            return value
+        maybe_str = StringValidator.maybe_str(value, raise_error=False)
+        if maybe_str:
+            return self.str_to_uuid(maybe_str)
+        raise ValueError('输入应为有效UUID类型')
+
+    @staticmethod
+    def check_version(value: uuid.UUID, version: optional[int]):
+        if version and value.version != version:
+            raise ValueError(f'UUID版本应为{version}')
+        return True
+
+    def str_to_uuid(self, value: str) -> uuid.UUID:
+        res = uuid.UUID(value)
+        self.check_version(res, self.version)
+        return res
 
 
 # TODO

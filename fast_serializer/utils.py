@@ -23,6 +23,11 @@ def _recursive_repr(user_function):
 
 
 def _format_type(_type) -> str:
-    type_str = str(_type).replace("<class '", "")
+    if hasattr(_type, "__name__"):
+        return _type.__name__
+    elif hasattr(_type, "__class__"):
+        return _type.__class__.__name__
+    type_str = str(_type)
+    type_str = type_str.replace("<class '", "")
     type_str = type_str if not type_str.endswith("'>") else type_str[:-2]
     return type_str

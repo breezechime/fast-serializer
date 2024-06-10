@@ -5,7 +5,7 @@ import time
 import typing
 from typing import List, Dict, Optional
 from fast_serializer import FastDataclass, field
-from fast_serializer.validator import StringValidator, BytesValidator, BoolValidator, IntegerValidator
+from fast_serializer.validator import StringValidator, BytesValidator, BoolValidator, IntegerValidator, UuidValidator
 
 
 class Address(FastDataclass):

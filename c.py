@@ -1,27 +1,24 @@
 # -*- coding:utf-8 -*-
 import datetime
+import decimal
 import uuid
-from typing import NamedTuple, Deque, Sequence, Iterable
-
+from typing import Union
+from typing_extensions import Literal
 from pydantic_core import PydanticCustomError, ErrorDetails
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, TypeAdapter
-from datetime import timedelta
+
+from fast_serializer.validator import TargetTypeValidator
 
 
 def printaa():
     print(123)
 
 
-class Point(NamedTuple):
-    x: int
-    y: int
-
-
 class Test(BaseModel):
 
     model_config = ConfigDict()
 
-    deque: Sequence[int]
+    name: Literal['aaa', 'bbb', 123]
 
     # @field_validator('name')
     # def val_name(cls, v):
@@ -30,16 +27,14 @@ class Test(BaseModel):
     #     return v
 
 
-class Action(object):
+class Action:
 
     name: str
 
 
 # print(Test.model_fields)
 ada = TypeAdapter(Test)
-print(ada.validator)
-
-# print(type(datetime.timedelta(1)))
+# print(ada.validator)
 # error = ErrorDetails()
 # try:
 #     test = Test(name='bar')
