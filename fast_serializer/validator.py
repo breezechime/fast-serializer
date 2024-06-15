@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+import collections
 import datetime
 import enum
 import re
@@ -20,7 +21,7 @@ class Validator(ABC):
     annotation: _T
 
     @abstractmethod
-    def validate(self, value, **kwargs) -> NoReturn:
+    def validate(self, value, **kwargs):
         """验证数据并返回正确数据或抛出异常"""
         raise NotImplementedError('必须实现验证方法')
 
@@ -30,6 +31,8 @@ class Validator(ABC):
 
     def get_name(self) -> str:
         return self.name
+
+    def update_validator(self) -> NoReturn: ...
 
     def __repr__(self):
         return f"{self.__class__.__name__}(\n\tname: {self.name},\n\tannotation: {self.annotation}\n)"
@@ -762,17 +765,40 @@ class EnumValidator(Validator):
             raise ValueError('输入应为枚举类型')
 
 
-# TODO
 class DequeValidator(Validator):
     """队列验证器"""
 
     name = 'deque'
     annotation = Deque
-    deque: List[Validator]
+    item_validator: Validator
+
+    def __init__(self, item_validator: optional[Validator] = None):
+        self.item_validator = item_validator or BASE_VALIDATORS[Any]
+        self.update_validator()
+
+    def validate(self, value, **kwargs):
+        if not type_parser.is_collection(value):
+            raise ValueError('输入应为可迭代类型')
+        elif not type_parser.is_deque(value):
+            value = collections.deque(value)
+        # 开始验证内部
+        return [self.item_validator.validate(item) for item in value]
 
     @classmethod
-    def validate(cls, value: Any, check: bool = True):
-        return cls.validator_type(value)
+    def build(cls, annotation: _T, *args, **kwargs) -> 'DequeValidator':
+        if not type_parser.is_collection(annotation):
+            raise ValueError(f"输入应为集合类型注解才可构建 {cls.__name__}")
+        args = get_args(annotation)
+        item_validator = matching_validator(args[0]) if args else None
+        validator = cls(item_validator)
+        return validator
+
+    def __repr__(self):
+        return (f"{self.__class__.__name__}(\n\tname: {self.name},\n\tannotation: "
+                f"{self.annotation},\n\titem_validator: {self.item_validator}\n)")
+
+    def update_validator(self):
+        self.name = f'deque[{self.item_validator.name}]'
 
 
 class UuidValidator(Validator):

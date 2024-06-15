@@ -40,10 +40,11 @@ class Test(BaseModel):
 
 ada = TypeAdapter(Test)
 print(ada.validator)
-deque = collections.deque()
+deque = collections.deque(('2'))
 print(deque)
-test = Test(arr=['1'])
-print(test.arr)
+print(issubclass(collections.deque, Collection))
+# test = Test(arr=['1'])
+# print(test.arr)
 # schema = core_schema.tuple_schema(
 #         [core_schema.int_schema(), core_schema.str_schema()],
 #         variadic_item_index=1,

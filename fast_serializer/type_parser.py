@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+import collections
 from typing import (
     Optional,
     Union,
@@ -75,6 +76,12 @@ class TypeParser:
         if value is None:
             return False
         return self.issubclass_safe(get_origin(value), Collection)
+
+    def is_deque(self, value) -> bool:
+        """是否双端队列类型的"""
+        if value is None:
+            return False
+        return self.isinstance_safe(value, collections.deque)
 
     def is_iterable(self, value) -> bool:
         """是否可迭代类型的"""
