@@ -1,11 +1,21 @@
 import abc
+import datetime
 import decimal
 import enum
 import time
 import typing
+import uuid
 from typing import List, Dict, Optional
 from fast_serializer import FastDataclass, field
-from fast_serializer.validator import StringValidator, BytesValidator, BoolValidator, IntegerValidator, UuidValidator
+from fast_serializer.type_parser import type_parser
+from fast_serializer.validator import StringValidator, BytesValidator, BoolValidator, IntegerValidator, UuidValidator, \
+    DatetimeValidator, TimeValidator, TimedeltaValidator, LiteralValidator
+
+
+class Test(enum.Enum):
+    COLOR = 'red'
+
+    BLUE = 1
 
 
 class Address(FastDataclass):
@@ -15,17 +25,23 @@ class Address(FastDataclass):
 
 class User(FastDataclass):
     """用户"""
-    nickname: str = field(required=True)
-    age: int = None
-
-    level: int = 1
+    tu: typing.Tuple[int, str]
     # address_list: List[Address]
 
 
-class Test(enum.Enum):
-    COLOR = 'red'
-
-
+print(typing.get_args(typing.Tuple[int, str, ...]))
+# print(LiteralValidator.build(typing.Literal[1, 2, 3]))
+# print(type_parser.is_tuple(typing.Tuple[int, str]))
+# print(issubclass(Test, enum.Enum))
+# user = User(tu=1)
+# print(user)
+# print(typing.get_origin(typing.Literal[1, 2, 3]))
+# print(issubclass(typing.Literal[1, 2, 3], typing.Literal))
+# print(datetime.datetime.fromisoformat("2023-06-11T10:15:30"))
+# print(time.time())
+# print(len(str(time.time() * 1000)))
+# print(TimeValidator().validate(datetime.datetime.now()))
+# print(DatetimeValidator().validate(time.time()))
 # print(IntegerValidator().validate('123'))
 # print(BoolValidator().validate('yes'))
 # print(issubclass(tuple, typing.Collection))

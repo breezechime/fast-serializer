@@ -180,7 +180,7 @@ def _is_type(annotation, cls, a_module, a_type, is_type_predicate):
     return False
 
 
-def _generate_field(cls, field_name: str, field_type) -> Field:
+def _generate_field(cls, field_name: str, annotation) -> Field:
     # Return a Field object for this field name and type.  ClassVars
     # and InitVars are also returned, but marked as such (see f._field_type).
     # 返回此字段名称和类型的Field对象。ClassVars和InitVars也会返回，但标记为这样（请参阅f.field_type）。
@@ -192,30 +192,28 @@ def _generate_field(cls, field_name: str, field_type) -> Field:
     field_or_default = getattr(cls, field_name, None)
     if isinstance(field_or_default, Field):
         """已是Field对象"""
-        _field = field_or_default
+        field = field_or_default
     elif isinstance(field_or_default, DataclassField):
         """原始数据类字段"""
-        _field = Field(default=field_or_default.default, default_factory=field_or_default.default_factory,
-                       init=field_or_default.init, repr=field_or_default.repr, hash=field_or_default.hash,
-                       compare=field_or_default.compare, metadata=field_or_default.metadata)
+        field = Field(default=field_or_default.default, default_factory=field_or_default.default_factory,
+                      init=field_or_default.init, repr=field_or_default.repr)
     else:
         if isinstance(field_or_default, MemberDescriptorType):
             # This is a field in __slots__, so it has no default value.
             # 这是__slots__中的字段，因此它没有默认值。
             field_or_default = None
-        _field = Field(default=field_or_default)
-        setattr(cls, field_name, _field)  # 保留Field在未实例的数据类上
+        field = Field(default=field_or_default)
+        setattr(cls, field_name, field)  # 保留Field在未实例的数据类上
 
-    _field.name = field_name
-    _field.set_type(field_type)
+    field.name = field_name
+    field.set_annotation(annotation)
 
     # 接下来是对InitVar和ClassVar的支持
-
     # Assume it's a normal field until proven otherwise.  We're next
     # going to decide if it's a ClassVar or InitVar, everything else
     # is just a normal field.
     # 在证明之前，假设它是一个普通字段。接下来，我们将决定它是ClassVar还是InitVar，其他所有内容都只是普通字段。
-    setattr(_field, '_field_type', _BASE_FIELD)
+    setattr(field, '_field_type', _BASE_FIELD)
 
     # In addition to checking for actual types here, also check for
     # string annotations.  get_type_hints() won't always work for us
@@ -232,27 +230,27 @@ def _generate_field(cls, field_name: str, field_type) -> Field:
     # typing has been imported by any module (not necessarily cls module).
     _typing = sys.modules.get('typing')
     if _typing:
-        end_if = isinstance(_field.type, str) and _is_type(_field.type, cls, _typing, ClassVar, _is_class_var)
-        if _is_class_var(field_type) or end_if:
-            field_type._field_type = _FIELD_CLASS_VAR
+        end_if = isinstance(field.annotation, str) and _is_type(field.annotation, cls, _typing, ClassVar, _is_class_var)
+        if _is_class_var(annotation) or end_if:
+            annotation._field_type = _FIELD_CLASS_VAR
 
     # If the type is InitVar, or if it's a matching string annotation, then it's an InitVar.
-    _field_type = getattr(field_type, '_field_type', _BASE_FIELD)
-    if _field_type is _BASE_FIELD:
+    field_type = getattr(annotation, '_field_type', _BASE_FIELD)
+    if field_type is _BASE_FIELD:
         # The module we're checking against is the module we're currently in (dataclasses_plus.py).
         module = sys.modules[__name__]
-        if (_is_init_var(_field.type) or (isinstance(_field.type, str)
-                                          and _is_type(_field.type, cls, module, InitVar, _is_init_var))):
-            setattr(_field, '_field_type', _FIELD_INIT_VAR)
+        if (_is_init_var(field.annotation) or (isinstance(field.annotation, str)
+                                               and _is_type(field.annotation, cls, module, InitVar, _is_init_var))):
+            setattr(field, '_field_type', _FIELD_INIT_VAR)
 
     # Validations for individual fields.  This is delayed until now,
     # instead of in the Field() constructor, since only here do we
     # know the field name, which allows for better error reporting.
 
     # Special restrictions for ClassVar and InitVar.
-    if _field_type in (_FIELD_CLASS_VAR, _FIELD_INIT_VAR):
-        if _field.default_factory is not None:
-            raise TypeError(f'field {_field.name} cannot have a default factory')
+    if field_type in (_FIELD_CLASS_VAR, _FIELD_INIT_VAR):
+        if field.default_factory is not None:
+            raise TypeError(f'field {field.name} cannot have a default factory')
         # Should I check for other field settings? default_factory
         # seems the most serious to check for.  Maybe add others.  For
         # example, how about init=False (or really,
@@ -260,11 +258,10 @@ def _generate_field(cls, field_name: str, field_type) -> Field:
         # ClassVar and InitVar to specify init=<anything>.
 
     # For real fields, disallow mutable defaults for known types.
-    if _field_type is _BASE_FIELD and isinstance(_field.default, (list, dict, set)):
-        raise ValueError(f'mutable default {type(_field.default)} for field '
-                         f'{_field.name} is not allowed: use default_factory')
+    if field_type is _BASE_FIELD and isinstance(field.default, (list, dict, set)):
+        raise ValueError(f'mutable default {type(field.default)} for field {field.name} is not allowed: use default_factory')
 
-    return _field
+    return field
 
 
 def _set_new_attribute(cls, name, value):
@@ -404,7 +401,7 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
     # Now find fields in our class.  While doing so, validate some
     # things, and set the default values (as class attributes) where we can.
     # 现在在我们班上查找字段。在这样做的同时，验证一些并设置默认值（作为类属性），其中我们可以。
-    cls_fields = [_generate_field(cls, name, _type) for name, _type in cls_annotations.items()]
+    cls_fields = [_generate_field(cls, name, annotation) for name, annotation in cls_annotations.items()]
     [dataclass_fields.__setitem__(_field.name, _field) for _field in cls_fields]  # type: ignore
 
     # Do we have any Field members that don't also have annotations?

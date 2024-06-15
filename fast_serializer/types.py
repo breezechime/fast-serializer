@@ -1,7 +1,10 @@
 # -*- coding:utf-8 -*-
+import decimal
 from typing import (
-    Optional
+    Optional, Union
 )
 
 
 optional = Optional
+
+number = Union[int, float, decimal.Decimal]

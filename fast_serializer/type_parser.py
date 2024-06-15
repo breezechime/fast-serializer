@@ -2,6 +2,7 @@
 from typing import (
     Optional,
     Union,
+    Literal,
     ClassVar,
     Dict,
     List,
@@ -13,7 +14,7 @@ from typing import (
     Tuple,
     Sequence,
     Counter,
-    get_origin,
+    get_origin, Iterable,
 )
 
 
@@ -32,23 +33,30 @@ class TypeParser:
             return False
         return value is Any
 
-    def is_optional(self, value) -> bool:
+    def is_optional(self, annotation) -> bool:
         """是否可为空"""
-        if value is None:
+        if annotation is None:
             return False
-        return value is Optional or getattr(value, '_name', None) == 'Optional' or value is Any
+        return annotation is Optional or getattr(annotation, '_name', None) == 'Optional' or annotation is Any
 
-    def is_no_return(self, value) -> bool:
+    def is_no_return(self, annotation) -> bool:
         """是否为不返回类型"""
-        if value is None:
+        if annotation is None:
             return False
-        return value is NoReturn
+        return annotation is NoReturn
 
-    def is_union(self, value) -> bool:
+    def is_union(self, annotation) -> bool:
         """是否联合类型的"""
-        if value is None:
+        if annotation is None:
             return False
-        return get_origin(value) is Union or getattr(get_origin(value), '_name', None) == 'Union'
+        return get_origin(annotation) is Union or getattr(get_origin(annotation), '_name', None) == 'Union'
+
+    def is_literal(self, annotation) -> bool:
+        """是否字面量类型的"""
+        if annotation is None:
+            return False
+        origin = get_origin(annotation)
+        return origin is Literal or getattr(origin, '_name', None) == 'Literal'
 
     def is_final(self, value) -> bool:
         """是否最后类型的"""
@@ -68,17 +76,23 @@ class TypeParser:
             return False
         return self.issubclass_safe(get_origin(value), Collection)
 
+    def is_iterable(self, value) -> bool:
+        """是否可迭代类型的"""
+        if value is None:
+            return False
+        return value is Iterable or self.issubclass_safe(get_origin(value), Iterable)
+
     def is_list(self, value) -> bool:
         """是否列表类型的"""
         if value is None:
             return False
-        return self.issubclass_safe(get_origin(value), List)
+        return self.isinstance_safe(value, list) or self.issubclass_safe(get_origin(value), List)
 
     def is_tuple(self, value) -> bool:
         """是否元组类型的"""
         if value is None:
             return False
-        return self.issubclass_safe(get_origin(value), Tuple)
+        return self.isinstance_safe(value, tuple) or self.issubclass_safe(get_origin(value), Tuple)
 
     def is_mapping(self, value) -> bool:
         """是否映射类型的"""
