@@ -494,7 +494,7 @@ class FastDataclass(metaclass=FastDataclassMeta):
     __fast_serializer__: ClassVar[FastSerializer] = FastSerializer()
 
     def __init__(self, /, **kwargs):
-        __tracebackhide__ = True
+        # __tracebackhide__ = True
         self.__fast_serializer__.deserialize(kwargs, instance=self)
 
     def __post_init__(self):

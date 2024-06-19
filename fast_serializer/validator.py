@@ -1,5 +1,6 @@
 # -*- coding:utf-8 -*-
 import collections
+import copy
 import datetime
 import enum
 import re
@@ -7,7 +8,8 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from typing import Any, Deque, Generator, Union, Collection, Iterable, Literal, NoReturn, List, get_args, Tuple
+from typing import Any, Deque, Generator, Union, Collection, Iterable, Literal, NoReturn, List, get_args, Tuple, Set, Dict, \
+    Optional, Sequence
 from .constants import _T
 from .type_parser import type_parser
 from .types import optional
@@ -409,6 +411,7 @@ class IterableValidator(Validator):
             return value
         elif type_parser.is_tuple(value):
             return value
+        raise ValueError('输入应为可迭代类型')
 
 
 # TODO
@@ -445,6 +448,9 @@ class TupleValidator(Validator):
     def __init__(self, item_validators: List[Validator]):
         self.item_validators = item_validators or []
 
+    def validate_tuple(self, value):
+        pass
+
     def validate(self, value, **kwargs):
         if not type_parser.is_tuple(value):
             return ValueError('输入应为元组类型')
@@ -464,8 +470,28 @@ class TupleValidator(Validator):
 class SetValidator(Validator):
     """集合验证器"""
 
+    name = 'set'
+    annotation = set
+    item_validator: Validator
+    min_length: optional[int]
+    max_length: optional[int]
+
+    def __init__(self, item_validator: optional[Validator] = None, min_length: optional[int] = None,
+                 max_length: optional[int] = None):
+        self.item_validator = item_validator or BASE_VALIDATORS[Any]
+        self.min_length = min_length
+        self.max_length = max_length
+
     def validate(self, value, **kwargs):
-        self.item_validator: Validator
+        if not type_parser.is_set(value):
+            value: set = self.annotation(IterableValidator.extract_iterable(value))
+
+    @classmethod
+    def build(cls, annotation: _T, *args, **kwargs) -> 'Validator':
+        if type_parser.is_iterable(annotation):
+            raise ValueError(f"输入应为可迭代类型注解才可构建 {cls.__name__}")
+
+        # return cls()
 
 
 # TODO
@@ -769,20 +795,20 @@ class DequeValidator(Validator):
     """队列验证器"""
 
     name = 'deque'
-    annotation = Deque
+    annotation = collections.deque
     item_validator: Validator
 
     def __init__(self, item_validator: optional[Validator] = None):
         self.item_validator = item_validator or BASE_VALIDATORS[Any]
         self.update_validator()
 
-    def validate(self, value, **kwargs):
+    def validate(self, value, **kwargs) -> collections.deque:
         if not type_parser.is_collection(value):
             raise ValueError('输入应为可迭代类型')
-        elif not type_parser.is_deque(value):
-            value = collections.deque(value)
+        new_deque = self.annotation()
         # 开始验证内部
-        return [self.item_validator.validate(item) for item in value]
+        [new_deque.append(self.item_validator.validate(item)) for item in value]
+        return new_deque
 
     @classmethod
     def build(cls, annotation: _T, *args, **kwargs) -> 'DequeValidator':
@@ -863,4 +889,38 @@ BASE_VALIDATORS = {
     datetime.timedelta: TimedeltaValidator(),
     enum.Enum: EnumValidator(),
     uuid.UUID: UuidValidator(),
+}
+
+MATCH_VALIDATOR = {
+    Any: AnyValidator,
+    str: StringValidator,
+    bool: BoolValidator,
+    int: IntegerValidator,
+    float: FloatValidator,
+    bytes: BytesValidator,
+    Decimal: DecimalValidator,
+    datetime.datetime: DatetimeValidator,
+    datetime.date: DateValidator,
+    datetime.time: TimeValidator,
+    datetime.timedelta: TimedeltaValidator,
+    enum.Enum: EnumValidator,
+    uuid.UUID: UuidValidator,
+    Iterable: IterableValidator,
+    Collection: ListValidator,
+    Sequence: ListValidator,
+    list: ListValidator,
+    List: ListValidator,
+    tuple: TupleValidator,
+    Tuple: TupleValidator,
+    set: SetValidator,
+    Set: SetValidator,
+    frozenset: FrozenValidator,
+    dict: DictValidator,
+    Dict: DictValidator,
+    collections.deque: DequeValidator,
+    Deque: DequeValidator,
+    Literal: LiteralValidator,
+    Optional: OptionalValidator,
+    Union: UnionValidator,
+    Generator: GeneratorValidator,
 }

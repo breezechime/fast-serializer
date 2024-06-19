@@ -12,24 +12,33 @@ from fast_serializer.validator import StringValidator, BytesValidator, BoolValid
     DatetimeValidator, TimeValidator, TimedeltaValidator, LiteralValidator
 
 
-class Test(enum.Enum):
-    COLOR = 'red'
+# class Test(enum.Enum):
+#     COLOR = 'red'
+#
+#     BLUE = 1
+#
+#
+# class Address(FastDataclass):
+#     """地址"""
+#     detail_address: str
+#
+#
+# class User(FastDataclass):
+#     """用户"""
+#     tu: typing.Tuple[int, str]
+#     # address_list: List[Address]
 
-    BLUE = 1
+
+class Test(FastDataclass):
+    arr: str
 
 
-class Address(FastDataclass):
-    """地址"""
-    detail_address: str
-
-
-class User(FastDataclass):
-    """用户"""
-    tu: typing.Tuple[int, str]
-    # address_list: List[Address]
-
-
-print(typing.get_args(typing.Tuple[int, str, ...]))
+arr = []
+now = time.time()
+for i in range(20):
+    arr.append(Test(arr='asd'))
+print(time.time() - now)
+# print(typing.get_args(typing.Tuple[int, str, ...]))
 # print(LiteralValidator.build(typing.Literal[1, 2, 3]))
 # print(type_parser.is_tuple(typing.Tuple[int, str]))
 # print(issubclass(Test, enum.Enum))

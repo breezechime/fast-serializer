@@ -133,10 +133,12 @@ class Field:
                 f"description={self.description!r})")
 
     def get_default_value(self):
-        value = None if self.default is None else self.default
-        if value is None:
-            value = self.default_factory() if self.default_factory is not None else value
-        return value
+        for d in dir(self):
+            print(getattr(self, d))
+        # value = None if self.default is None else self.default
+        # if value is None:
+        #     value = self.default_factory() if self.default_factory is not None else value
+        # return value
 
 
 # This function is used instead of exposing Field creation directly,

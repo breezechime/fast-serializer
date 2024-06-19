@@ -15,21 +15,9 @@ from fast_serializer.validator import TargetTypeValidator, DatetimeValidator, Da
 from pydantic_core import core_schema
 
 
-# core_schema.
-def printaa():
-    print(123)
-
-
-class BB(TypedDict):
-
-    name: str
-
-
 class Test(BaseModel):
 
-    model_config = ConfigDict()
-
-    arr: typing.Deque
+    arr: str
 
     # @field_validator('name')
     # def val_name(cls, v):
@@ -37,12 +25,18 @@ class Test(BaseModel):
     #         raise ValueError('haha')
     #     return v
 
-
-ada = TypeAdapter(Test)
-print(ada.validator)
-deque = collections.deque(('2'))
-print(deque)
-print(issubclass(collections.deque, Collection))
+arr = []
+now = time.time()
+for i in range(1000000):
+    arr.append(Test(arr='asd'))
+print(time.time() - now)
+# core_schema.set_schema()
+# ada = TypeAdapter(Test)
+# print(ada.validator)
+# deque = collections.deque(('2'))
+# print(list(deque))
+# print(deque)
+# print(issubclass(collections.deque, Collection))
 # test = Test(arr=['1'])
 # print(test.arr)
 # schema = core_schema.tuple_schema(

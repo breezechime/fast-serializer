@@ -36,19 +36,12 @@ class FastSerializer:
                 raise ValueError(f"{field_name} 为必填项")
 
             """反序列化过程中类型如果不正确会进行强行转换"""
-            if value is not None:
-                value = self._validate_value(value, field.type)
+            if value is not None and not isinstance(value, field.annotation):
+                value = self._validate_value(value, field.annotation)
 
             setattr(instance, field_name, value)
 
         return instance  # type: ignore
-
-    @classmethod
-    def _get_getter_func(cls, data: Union[dict, object]):
-        if type_parser.isinstance_safe(data, dict):
-            return data.__getitem__
-        else:
-            return getattr
 
     @staticmethod
     def _get_value(data: Union[dict, object], is_dict: bool, field_name: str, field: Field) -> Any:

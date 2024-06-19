@@ -15,7 +15,7 @@ from typing import (
     Tuple,
     Sequence,
     Counter,
-    get_origin, Iterable,
+    get_origin, Iterable, Set,
 )
 
 
@@ -101,6 +101,12 @@ class TypeParser:
             return False
         return self.isinstance_safe(value, tuple) or self.issubclass_safe(get_origin(value), Tuple)
 
+    def is_set(self, value) -> bool:
+        """是否集合类型的"""
+        if value is None:
+            return False
+        return self.isinstance_safe(value, set) or self.issubclass_safe(get_origin(value), Set)
+
     def is_mapping(self, value) -> bool:
         """是否映射类型的"""
         if value is None:
@@ -111,7 +117,7 @@ class TypeParser:
         """是否字典类型的"""
         if value is None:
             return False
-        return self.issubclass_safe(get_origin(value), Dict)
+        return value is Dict or self.isinstance_safe(value, dict) or self.issubclass_safe(get_origin(value), Dict)
 
     def is_sequence(self, value) -> bool:
         """是否序列类型的"""
