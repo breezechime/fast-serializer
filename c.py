@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+import datetime
 import decimal
 import uuid
 from typing import Any
@@ -11,14 +12,16 @@ class Test(BaseModel):
 
     model_config = ConfigDict(str_to_upper=True)
 
-    test2: uuid.UUID
+    test2: datetime.time
 
     # @field_validator('test2', mode='before')
     # def val_name(cls, v):
     #     raise UnicodeDecodeError('utf-8', b'test', 0, 1, 'test')
 
-test = Test(test2='asd')
+
+test = Test(test2=30)
 print(test.test2)
+print(type(test.test2))
 # try:
 #     Test(test=123, test2='asd', arr=[1, 2])
 # except ValidationError as e:

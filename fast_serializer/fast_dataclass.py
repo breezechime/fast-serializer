@@ -2,13 +2,14 @@
 import _thread
 import builtins
 import functools
-import inspect
 import sys
 from dataclasses import Field as DataclassField
 from types import MemberDescriptorType, GenericAlias, FunctionType
 from typing import ClassVar, Dict, dataclass_transform, Type, Any, List
+
 from .constants import (_T, _DATACLASS_CONFIG_NAME, _DATACLASS_FIELDS_NAME, _BASE_FIELD,
-                        _MODULE_IDENTIFIER_RE, InitVar, _FIELD_CLASS_VAR, _FIELD_INIT_VAR, _FAST_DATACLASS_DECORATORS_NAME,
+                        _MODULE_IDENTIFIER_RE, InitVar, _FIELD_CLASS_VAR, _FIELD_INIT_VAR,
+                        _FAST_DATACLASS_DECORATORS_NAME,
                         _FAST_SERIALIZER_NAME)
 from .dataclass_config import DataclassConfig
 from .decorators import FastDataclassDecoratorInfo

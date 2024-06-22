@@ -8,15 +8,15 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from typing import (
-    Any, Deque, Generator, Union, Collection, Iterable, Literal, NoReturn, List, get_args, Tuple, Set, Dict, Optional, Sequence
-)
-
 from .constants import _T
 from .exceptions import DataclassCustomError
 from .type_parser import type_parser
 from .types import optional
 from .utils import _format_type
+from typing import (
+    Any, Deque, Generator, Union, Collection, Iterable, Literal, NoReturn, List, get_args, Tuple, Set, Dict, Optional,
+    Sequence
+)
 
 
 class Validator(ABC):
@@ -241,7 +241,8 @@ class TargetTypeValidator(Validator):
 
     name = 'target_type'
 
-    def __init__(self, annotation: _T):
+    def __init__(self, annotation: _T, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.annotation = annotation
         self.name = _format_type(annotation)
 
@@ -306,7 +307,8 @@ class LiteralValidator(Validator):
     annotation = Literal
     expected_values: Tuple[Any, ...]
 
-    def __init__(self, *expected: Tuple[Any, ...]):
+    def __init__(self, *expected: Tuple[Any, ...], **kwargs):
+        super().__init__(*expected, **kwargs)
         self.expected_values = expected
         self.update_validator()
 
@@ -445,7 +447,8 @@ class ListValidator(Validator):
 
     def validate(self, value, **kwargs):
         is_list = type_parser.isinstance_safe(value, list)
-        if not is_list and not (type_parser.issubclass_safe(value, Iterable) or type_parser.issubclass_safe(value, Collection)):
+        if not is_list and not (
+                type_parser.issubclass_safe(value, Iterable) or type_parser.issubclass_safe(value, Collection)):
             raise ValueError('输入应为列表类型')
         # 验证子元素
         return [self.item_validator.validate(item) for item in value]
@@ -569,12 +572,23 @@ class DatetimeValidator(Validator):
     def validate(self, value, **kwargs):
         if type_parser.isinstance_safe(value, self.annotation):
             return value
-        elif type_parser.isinstance_safe(value, (IntegerValidator.annotation, FloatValidator.annotation,
-                                                 StringValidator.annotation)):
-            return self.str_or_int_to_datetime(value)
         elif type_parser.isinstance_safe(value, DateValidator.annotation):
             return self.date_to_datetime(value)
-        raise ValueError('输入应为有效日期时间类型')
+        try:
+            if type_parser.isinstance_safe(value, (IntegerValidator.annotation, FloatValidator.annotation)):
+                return self.str_or_int_to_datetime(IntegerValidator.annotation(value))
+            maybe_str = StringValidator.maybe_str(value, raise_error=False)
+            if maybe_str:
+                return self.str_or_int_to_datetime(maybe_str)
+        except DataclassCustomError as e:
+            raise e
+        except (ValueError, TypeError) as e:
+            raise self.get_default_error(StringValidator.annotation(e))
+        raise self.get_default_error()
+
+    @classmethod
+    def get_default_error(cls, msg: optional[str] = None):
+        return DataclassCustomError('datetime_parsing', msg or '输入应为有效的日期时间或日期')
 
     @classmethod
     def timestamp_to_datetime(cls, value: Union[int, float]) -> datetime.datetime:
@@ -592,7 +606,7 @@ class DatetimeValidator(Validator):
         value = StringValidator.annotation(value)
         length = len(value)
         if length < cls.year_length:
-            raise ValueError('输入应为有效日期类型')
+            raise DataclassCustomError('datetime_parsing', '输入应为有效的日期时间或日期，输入太短')
         int_value = None
         try:
             int_value = int(float(value))  # 兼容'2024.0'
@@ -613,7 +627,11 @@ class DatetimeValidator(Validator):
         elif length == cls.date_length + 2 and int_value is None:
             # e.g: 2024-02-04 10位版本
             delimiter = cls.get_delimiter(value)
-            return datetime.datetime.strptime(value, f'%Y{delimiter}%m{delimiter}%d')
+            __format = f'%Y{delimiter}%m{delimiter}%d'
+            try:
+                return datetime.datetime.strptime(value, __format)
+            except (ValueError, TypeError):
+                raise DataclassCustomError('date_parsing', f'时间数据“{value}”与格式“{__format}”不匹配')
         elif length == cls.date_length + 5 and int_value:
             # e.g: 1718245600000 时间戳13位版本
             return cls.timestamp_to_datetime(int_value)
@@ -623,15 +641,35 @@ class DatetimeValidator(Validator):
         elif length == cls.date_length + 8 and int_value is None:
             # e.g: 2024-02-04 10:15 16位版本
             delimiter = cls.get_delimiter(value)
-            return datetime.datetime.strptime(value, f'%Y{delimiter}%m{delimiter}%d %H:%M')
+            __format = f'%Y{delimiter}%m{delimiter}%d %H:%M'
+            try:
+                return datetime.datetime.strptime(value, __format)
+            except (ValueError, TypeError):
+                raise DataclassCustomError(
+                    'datetime_parsing',
+                    f'时间数据“{value}”与格式“{__format}”不匹配'
+                )
         elif length == cls.date_length + 11 and int_value is None and 'T' not in value:
             # e.g: 2024-02-04 10:15:30
             delimiter = cls.get_delimiter(value)
-            return datetime.datetime.strptime(value, f'%Y{delimiter}%m{delimiter}%d %H:%M:%S')
+            __format = f'%Y{delimiter}%m{delimiter}%d %H:%M:%S'
+            try:
+                return datetime.datetime.strptime(value, __format)
+            except (ValueError, TypeError):
+                raise DataclassCustomError(
+                    'datetime_parsing',
+                    f'时间数据“{value}”与格式“{__format}”不匹配'
+                )
         elif length >= cls.date_length + 11 and int_value is None:
             # rfc3339格式支持
-            return datetime.datetime.fromisoformat(value)
-        raise ValueError('输入应为有效日期时间类型')
+            try:
+                return datetime.datetime.fromisoformat(value)
+            except (ValueError, TypeError):
+                raise DataclassCustomError(
+                    'datetime_from_rfc3339_parsing',
+                    '输入的RFC3339日期时间格式有误'
+                )
+        raise DatetimeValidator.get_default_error()
 
     @staticmethod
     def get_delimiter(value: str):
@@ -643,6 +681,12 @@ class TimeValidator(Validator):
 
     name = 'time'
     annotation = datetime.time
+    """模式：second模式数字当秒处理，time模式数字将转换时间，默认`second`"""
+    mode: Literal['second', 'time']
+
+    def __init__(self, mode: Literal['second', 'time'] = 'second', *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mode = mode
 
     def validate(self, value, **kwargs):
         if type_parser.isinstance_safe(value, self.annotation):
@@ -652,28 +696,43 @@ class TimeValidator(Validator):
         elif type_parser.isinstance_safe(value, IntegerValidator.annotation):
             return self.int_to_time(value)
         elif type_parser.isinstance_safe(value, FloatValidator.annotation):
-            return self.int_to_time(int(value))
-        maybe_str = StringValidator.maybe_str(value)
+            return self.int_to_time(IntegerValidator.annotation(value))
+
+        maybe_str = StringValidator.maybe_str(value, raise_error=False)
         if maybe_str:
             return self.str_to_time(maybe_str)
-        raise ValueError('输入应为有效时间类型')
+        raise self.get_default_error()
 
-    @classmethod
-    def int_to_time(cls, value: int) -> datetime.time:
+    def int_to_time(self, value: int) -> datetime.time:
+        if self.mode == 'second':
+            hour = value // 3600
+            minute = value // 60
+            second = value % 60
+            return datetime.time(hour, minute, second)
         str_value = str(value)
         length = len(str_value)
         if length == 3:
             return datetime.time(int(str_value[0]), int(str_value[1:]), 0)
         elif length == 4:
             return datetime.time(int(str_value[:2]), int(str_value[2:]), 0)
-        raise ValueError('输入应为有效时间类型')
+        raise self.get_default_error()
 
     @classmethod
     def str_to_time(cls, value: str) -> datetime.time:
         length = len(value)
-        if length >= 5:
-            return datetime.time.fromisoformat(value)
-        raise ValueError('输入应为有效时间类型')
+        try:
+            if length >= 5:
+                return datetime.time.fromisoformat(value)
+        except (ValueError, TypeError):
+            raise DataclassCustomError(
+                'time_from_rfc3339_parsing',
+                '输入应为时间类型，无法解析异常的RFC时间格式'
+            )
+        raise cls.get_default_error()
+
+    @classmethod
+    def get_default_error(cls, msg: optional[str] = None):
+        return DataclassCustomError('time_parsing', msg or '输入应为有效时间类型')
 
 
 class TimedeltaValidator(Validator):
