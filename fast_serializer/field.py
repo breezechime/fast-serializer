@@ -106,9 +106,8 @@ class Field:
     )
 
     def __init__(self, **kwargs):
-        self.init = True
-        self.repr = True
-        [self.__setattr__(k, v) for k, v in kwargs.items() if k in self.__slots__]
+        kwargs = {k: kwargs.get(k, _DEFAULT_FIELD_VALUES.get(k)) for k in self.__slots__}
+        _ = {setattr(self, k, v) for k, v in kwargs.items()}
 
         if self.default is dataclasses.MISSING:
             self.default = None
@@ -133,18 +132,16 @@ class Field:
                 f"description={self.description!r})")
 
     def get_default_value(self):
-        for d in dir(self):
-            print(getattr(self, d))
-        # value = None if self.default is None else self.default
-        # if value is None:
-        #     value = self.default_factory() if self.default_factory is not None else value
-        # return value
+        value = None if self.default is None else self.default
+        if value is None:
+            value = self.default_factory() if self.default_factory is not None else value
+        return value
 
 
 # This function is used instead of exposing Field creation directly,
 # so that a type checker can be told (via overloads) that this is a
 # function whose type depends on its parameters.
-def field(*, default=None, default_factory=None, required=False, **kwargs) -> Field:
+def field(*, default=None, default_factory=None, required=False, val_extra: dict = None, **kwargs) -> Field:
     """Return an object to identify dataclass fields.
 
     default is the default value of the field.  default_factory is a
@@ -158,4 +155,31 @@ def field(*, default=None, default_factory=None, required=False, **kwargs) -> Fi
 
     It is an error to specify both default and default_factory.
     """
-    return Field(default=default, default_factory=default_factory, required=required, **kwargs)
+    return Field(default=default, default_factory=default_factory, required=required, val_extra=val_extra, **kwargs)
+
+
+_DEFAULT_FIELD_VALUES: dict = dict(
+    name=None,
+    title=None,
+    vaildator=None,
+    annotation=None,
+    default=None,
+    default_factory=None,
+    required=None,
+    init=True,
+    repr=True,
+    alias=None,
+    val_alias=None,
+    ser_alias=None,
+    min=None,
+    max=None,
+    min_length=None,
+    max_length=None,
+    description=None,
+    exclude=None,
+    deprecated=None,
+    frozen=None,
+    init_var=None,
+    val_extra=None,
+    ser_extra=None,
+)

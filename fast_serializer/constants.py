@@ -56,6 +56,7 @@ _DATACLASS_FIELDS_NAME = 'dataclass_fields'
 # @dataclass.
 _DATACLASS_CONFIG_NAME = 'dataclass_config'
 
+_FAST_SERIALIZER_NAME = '__fast_serializer__'
 
 # 数据类装饰器名
 _FAST_DATACLASS_DECORATORS_NAME = '__fast_dataclass_decorators__'

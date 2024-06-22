@@ -1,35 +1,31 @@
 # -*- coding:utf-8 -*-
-import collections
-import datetime
 import decimal
-import queue
-import time
-import typing
 import uuid
-from typing_extensions import TypedDict
-from typing import Union, Collection, Iterable, Mapping
-from typing_extensions import Literal
-from pydantic_core import PydanticCustomError, ErrorDetails, SchemaValidator
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, TypeAdapter, Field
-from fast_serializer.validator import TargetTypeValidator, DatetimeValidator, DateValidator
-from pydantic_core import core_schema
+from typing import Any
+
+from pydantic import BaseModel, field_validator, ValidationError, ConfigDict, Field
+from pydantic_core import PydanticCustomError
 
 
 class Test(BaseModel):
 
-    arr: str
+    model_config = ConfigDict(str_to_upper=True)
 
-    # @field_validator('name')
+    test2: uuid.UUID
+
+    # @field_validator('test2', mode='before')
     # def val_name(cls, v):
-    #     if v == 'bar':
-    #         raise ValueError('haha')
-    #     return v
+    #     raise UnicodeDecodeError('utf-8', b'test', 0, 1, 'test')
 
-arr = []
-now = time.time()
-for i in range(1000000):
-    arr.append(Test(arr='asd'))
-print(time.time() - now)
+
+test = Test(test2='sad')
+print(test.test2)
+# try:
+#     Test(test=123, test2='asd', arr=[1, 2])
+# except ValidationError as e:
+#     print(e.json())
+# for i in dir(Test):
+#     print(i, getattr(Test, i))
 # core_schema.set_schema()
 # ada = TypeAdapter(Test)
 # print(ada.validator)
@@ -81,9 +77,9 @@ print(time.time() - now)
 #     test = Test(name='bar')
 # except PydanticCustomError as e:
 #     print(e.json())
-    # print(dir(e))
-    # print(type(e.errors()[0]))
-    # print(e)
+# print(dir(e))
+# print(type(e.errors()[0]))
+# print(e)
 # raise PydanticCustomError(
 #     'not_a_bar',
 #     'not a bar',
@@ -98,5 +94,5 @@ print(time.time() - now)
 # except ValidationError as e:
 #     print(e.json())
 #     print(dir(e))
-    # print(type(e.errors()[0]))
-    # print(e)
+# print(type(e.errors()[0]))
+# print(e)

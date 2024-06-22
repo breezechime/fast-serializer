@@ -8,11 +8,13 @@ from dataclasses import Field as DataclassField
 from types import MemberDescriptorType, GenericAlias, FunctionType
 from typing import ClassVar, Dict, dataclass_transform, Type, Any, List
 from .constants import (_T, _DATACLASS_CONFIG_NAME, _DATACLASS_FIELDS_NAME, _BASE_FIELD,
-                        _MODULE_IDENTIFIER_RE, InitVar, _FIELD_CLASS_VAR, _FIELD_INIT_VAR, _FAST_DATACLASS_DECORATORS_NAME)
+                        _MODULE_IDENTIFIER_RE, InitVar, _FIELD_CLASS_VAR, _FIELD_INIT_VAR, _FAST_DATACLASS_DECORATORS_NAME,
+                        _FAST_SERIALIZER_NAME)
 from .dataclass_config import DataclassConfig
 from .decorators import FastDataclassDecoratorInfo
 from .field import Field
 from .serializer import FastSerializer
+from .validator import matching_validator
 
 
 def is_fast_dataclass(instance):
@@ -180,7 +182,7 @@ def _is_type(annotation, cls, a_module, a_type, is_type_predicate):
     return False
 
 
-def _generate_field(cls, field_name: str, annotation) -> Field:
+def _generate_field(cls, field_name: str, annotation: type, dataclass_config: DataclassConfig) -> Field:
     # Return a Field object for this field name and type.  ClassVars
     # and InitVars are also returned, but marked as such (see f._field_type).
     # 返回此字段名称和类型的Field对象。ClassVars和InitVars也会返回，但标记为这样（请参阅f.field_type）。
@@ -206,7 +208,12 @@ def _generate_field(cls, field_name: str, annotation) -> Field:
         setattr(cls, field_name, field)  # 保留Field在未实例的数据类上
 
     field.name = field_name
+    field.required = dataclass_config.required
+    field.frozen = dataclass_config.frozen
     field.set_annotation(annotation)
+
+    # 查找验证器
+    field.validator = matching_validator(annotation, **field.val_extra or dict())
 
     # 接下来是对InitVar和ClassVar的支持
     # Assume it's a normal field until proven otherwise.  We're next
@@ -353,10 +360,16 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
         _globals = {}
 
     # 设置快速数据类的配置
-    dataclass_config = getattr(cls, _DATACLASS_CONFIG_NAME, DataclassConfig())
+    dataclass_config = getattr(cls, _DATACLASS_CONFIG_NAME, None)
     if dataclass_config is None:
         dataclass_config = DataclassConfig()
         setattr(cls, _DATACLASS_CONFIG_NAME, dataclass_config)
+
+    # 设置快速数据类的序列化器
+    fast_serializer = getattr(cls, _FAST_SERIALIZER_NAME, None)
+    if fast_serializer is None:
+        fast_serializer = FastSerializer()
+        setattr(cls, _FAST_SERIALIZER_NAME, fast_serializer)
 
     # Find our base classes in reverse MRO order, and exclude
     # ourselves.  In reversed order so that more derived classes
@@ -401,7 +414,7 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
     # Now find fields in our class.  While doing so, validate some
     # things, and set the default values (as class attributes) where we can.
     # 现在在我们班上查找字段。在这样做的同时，验证一些并设置默认值（作为类属性），其中我们可以。
-    cls_fields = [_generate_field(cls, name, annotation) for name, annotation in cls_annotations.items()]
+    cls_fields = [_generate_field(cls, name, annotation, dataclass_config) for name, annotation in cls_annotations.items()]
     [dataclass_fields.__setitem__(_field.name, _field) for _field in cls_fields]  # type: ignore
 
     # Do we have any Field members that don't also have annotations?
@@ -424,8 +437,8 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
     # set __hash__ to None.  This is a heuristic, as it's possible
     # that such a __hash__ == None was not auto-generated, but it
     # closes enough.
-    class_hash = cls.__dict__.get('__hash__', None)
-    has_explicit_hash = not (class_hash is None or (class_hash is None and '__eq__' in cls.__dict__))
+    # class_hash = cls.__dict__.get('__hash__', None)
+    # has_explicit_hash = not (class_hash is None or (class_hash is None and '__eq__' in cls.__dict__))
 
     # If we're generating ordering methods, we must be generating the
     # eq methods.
@@ -448,15 +461,15 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
     #     # we're here the overwriting is unconditional.
     #     cls.__hash__ = hash_action(cls, field_list, _globals)
     #
-    if not getattr(cls, '__doc__'):
-        # Create a class doc-string.
-        try:
-            # In some cases fetching a signature is not possible.
-            # But, we surely should not fail in this case.
-            text_sig = str(inspect.signature(cls)).replace(' -> None', '')
-        except (TypeError, ValueError):
-            text_sig = ''
-        cls.__doc__ = (cls.__name__ + text_sig)
+    # if not getattr(cls, '__doc__'):
+    #     # Create a class doc-string.
+    #     try:
+    #         # In some cases fetching a signature is not possible.
+    #         # But, we surely should not fail in this case.
+    #         text_sig = str(inspect.signature(cls)).replace(' -> None', '')
+    #     except (TypeError, ValueError):
+    #         text_sig = ''
+    #     cls.__doc__ = (cls.__name__ + text_sig)
 
     return cls
 
@@ -478,10 +491,10 @@ class FastDataclassMeta(type):
 class FastDataclass(metaclass=FastDataclassMeta):
     """Base class for creating fast dataclass 用于创建快速数据类的基类"""
 
-    """Configuration for the dataclass"""
-    dataclass_config: ClassVar[DataclassConfig] = DataclassConfig()
+    """数据类配置"""
+    dataclass_config: ClassVar[DataclassConfig]
 
-    """The metadata of the fields defined on the dataclass 在数据类上定义的字段的元数据"""
+    """在数据类上定义的字段的元数据"""
     dataclass_fields: ClassVar[Dict[str, Field]]
 
     """用于存放数据类的装饰器数据"""
@@ -490,11 +503,12 @@ class FastDataclass(metaclass=FastDataclassMeta):
     """JsonSchema"""
     # __fast_schema__: ClassVar[JsonSchema] = JsonSchema()
 
-    """快速序列化器"""
-    __fast_serializer__: ClassVar[FastSerializer] = FastSerializer()
+    """快速序列化器，支持反序列化和序列化"""
+    __fast_serializer__: ClassVar[FastSerializer]
 
     def __init__(self, /, **kwargs):
-        # __tracebackhide__ = True
+        # 隐藏特定代码的回溯信息，以便在发生异常时，使回溯信息更加简洁和有意义。
+        __tracebackhide__ = True
         self.__fast_serializer__.deserialize(kwargs, instance=self)
 
     def __post_init__(self):
@@ -504,8 +518,8 @@ class FastDataclass(metaclass=FastDataclassMeta):
         """
         pass
 
-    def schema_dict(self):
-        pass
+    # def schema_dict(self):
+    #     raise NotImplementedError('')
 
     def __str__(self):
         return f"{self.__class__.__name__}({self.__repr_names__(', ')})"

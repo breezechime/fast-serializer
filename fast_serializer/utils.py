@@ -31,3 +31,13 @@ def _format_type(_type) -> str:
     type_str = type_str.replace("<class '", "")
     type_str = type_str if not type_str.endswith("'>") else type_str[:-2]
     return type_str
+
+
+def camel_to_snake(text: str) -> str:
+    """驼峰转下划线"""
+    return ''.join(['_' + i.lower() if i.isupper() else i for i in text]).lstrip('_')
+
+
+def snake_to_camel(text: str) -> str:
+    """下划线转驼峰"""
+    return ''.join(w.capitalize() for w in text.split('_'))

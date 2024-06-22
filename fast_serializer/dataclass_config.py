@@ -2,13 +2,14 @@
 import dataclasses
 from typing import Literal
 from .types import optional
+from .globals import GlobalSetting
 
 
 ExtraValues = Literal['allow', 'ignore', 'forbid']
 
 
-@dataclasses.dataclass(frozen=True)
-class DataclassConfig(object):
+@dataclasses.dataclass
+class DataclassConfig:
     """快速数据类配置"""
 
     """数据类标题"""
@@ -17,11 +18,11 @@ class DataclassConfig(object):
     """数据类描述"""
     description: str = None
 
-    """对于str类型，是否将所有字符转换为小写。默认为“False”。"""
-    str_to_lower: bool = False
+    """键名驼峰转换到下划线。默认为“False”。"""
+    camel_to_snake: bool = False
 
-    """对于str类型，是否将所有字符转换为大写。默认为“False”。"""
-    str_to_upper: bool = False
+    """键名下划线转换到驼峰。默认为“False”。"""
+    snake_to_camel: bool = False
 
     """是否为str类型去掉前导和尾部空白。"""
     str_strip_whitespace: bool = False
@@ -57,8 +58,15 @@ class DataclassConfig(object):
     """date格式化"""
     date_format: str = "%Y-%m-%d"
 
+    """默认必填"""
+    required: optional[bool] = None
+
     eq: bool = True
 
     order: bool = False
 
     unsafe_hash: bool = False
+
+    def __post_init__(self):
+        if self.required is None:
+            self.required = GlobalSetting.get_dataclass_default_required()

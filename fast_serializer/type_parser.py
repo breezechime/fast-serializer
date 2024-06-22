@@ -133,6 +133,9 @@ class TypeParser:
 
         return self.issubclass_safe(get_origin(value), Counter)
 
+    def get_origin_safe(self, v):
+        return get_origin(v)
+
     def issubclass_safe(self, value, target_type):
         try:
             return issubclass(value, target_type)

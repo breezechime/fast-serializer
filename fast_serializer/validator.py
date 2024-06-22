@@ -1,16 +1,19 @@
 # -*- coding:utf-8 -*-
 import collections
-import copy
 import datetime
+import decimal
 import enum
 import re
 import time
 import uuid
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from typing import Any, Deque, Generator, Union, Collection, Iterable, Literal, NoReturn, List, get_args, Tuple, Set, Dict, \
-    Optional, Sequence
+from typing import (
+    Any, Deque, Generator, Union, Collection, Iterable, Literal, NoReturn, List, get_args, Tuple, Set, Dict, Optional, Sequence
+)
+
 from .constants import _T
+from .exceptions import DataclassCustomError
 from .type_parser import type_parser
 from .types import optional
 from .utils import _format_type
@@ -21,6 +24,8 @@ class Validator(ABC):
 
     name: str
     annotation: _T
+
+    def __init__(self, *args, **kwargs): ...
 
     @abstractmethod
     def validate(self, value, **kwargs):
@@ -41,7 +46,7 @@ class Validator(ABC):
 
     @classmethod
     def build(cls, annotation: _T, *args, **kwargs) -> 'Validator':
-        return cls()
+        return cls(*args, **kwargs)
 
 
 class AnyValidator(Validator):
@@ -70,8 +75,7 @@ class StringValidator(Validator):
                          DecimalValidator.annotation, BoolValidator.annotation)
         if allow_number and type_parser.isinstance_safe(value, numbers_types):
             return self.annotation(value)
-
-        raise ValueError('Input should be string')
+        raise ValueError('输入应为有效字符串')
 
     @classmethod
     def maybe_str(cls, value, raise_error: bool = True) -> optional[str]:
@@ -83,7 +87,7 @@ class StringValidator(Validator):
             except UnicodeDecodeError:
                 if not raise_error:
                     return False
-                raise ValueError('Input should be string')
+                raise DataclassCustomError('string_unicode', '输入应为有效字符串，不能将原始数据解析为unicode字符串')
         return None
 
 
@@ -102,17 +106,15 @@ class BoolValidator(Validator):
             return self.int_to_bool(IntegerValidator.annotation(value))
         elif type_parser.isinstance_safe(value, StringValidator.annotation):
             return self.str_to_bool(value)
-
-        raise ValueError('Input should be bool')
+        raise ValueError('输入应为有效布尔类型')
 
     @staticmethod
     def str_to_bool(value: str) -> bool:
-        if value.lower() in ['0', 'false', 'f', 'n', 'no', 'off']:
+        if value.lower() in ['0', 'false', 'f', 'n', 'no', 'off', '不', '否', '错误', '异常', '错']:
             return False
-        elif value.lower() in ['1', 'true', 't', 'y', 'yes', 'on']:
+        elif value.lower() in ['1', 'true', 't', 'y', 'yes', 'on', '是', '好', '好的', '正确', '对', '对的']:
             return True
-
-        raise ValueError('Input should be bool')
+        raise ValueError('输入应为有效布尔类型')
 
     @staticmethod
     def int_to_bool(value: int) -> bool:
@@ -120,8 +122,7 @@ class BoolValidator(Validator):
             return False
         elif value == 1:
             return True
-
-        raise ValueError('Input should be bool')
+        raise ValueError('输入应为有效布尔类型')
 
 
 class IntegerValidator(Validator):
@@ -129,39 +130,45 @@ class IntegerValidator(Validator):
 
     name = 'int'
     annotation = int
+    half_adjust_value = 0.11
 
     def validate(self, value, **kwargs):
-        if type_parser.isinstance_safe(value, self.annotation):
-            return value
-        elif type_parser.isinstance_safe(value, BoolValidator.annotation):
+        if type_parser.isinstance_safe(value, BoolValidator.annotation):
             return self.bool_to_int(value)
+        elif type_parser.isinstance_safe(value, self.annotation):
+            return value
         elif type_parser.isinstance_safe(value, FloatValidator.annotation):
             return self.float_to_int(value)
         elif type_parser.isinstance_safe(value, DecimalValidator.annotation):
             return self.decimal_to_int(value)
-        maybe_str = StringValidator.maybe_str(value)
-        if maybe_str:
-            return self.str_to_int(value)
-        elif type_parser.isinstance_safe(value, enum.Enum):
+        try:
+            maybe_str = StringValidator.maybe_str(value)
+            if maybe_str:
+                return self.str_to_int(value)
+        except (UnicodeDecodeError, ValueError, DataclassCustomError):
+            raise DataclassCustomError('int_parsing', '输入应为有效整数，无法将字符串解析为整数')
+        if type_parser.isinstance_safe(value, enum.Enum):
             return self.enum_to_int(value)
-
-        raise ValueError('Input should be integer')
+        raise TypeError('输入应为有效整数')
 
     @staticmethod
     def bool_to_int(value: bool):
-        return int(value)
+        return IntegerValidator.annotation(value)
 
     @staticmethod
     def str_to_int(value: str):
-        return int(value)
+        return IntegerValidator.annotation(value)
 
-    @staticmethod
-    def float_to_int(value: float):
-        return int(value)
+    def float_to_int(self, value: float):
+        # 四舍五入容差
+        integer_part = self.annotation(value)
+        maybe_int = self.annotation(self.annotation(value + self.half_adjust_value))
+        return maybe_int if maybe_int > integer_part else integer_part
 
-    @staticmethod
-    def decimal_to_int(value: float):
-        return int(value)
+    def decimal_to_int(self, value: Decimal):
+        integer_part = self.annotation(value)
+        maybe_int = self.annotation(self.annotation(value + Decimal(self.half_adjust_value)))
+        return maybe_int if maybe_int > integer_part else integer_part
 
     @staticmethod
     def enum_to_int(value: enum.Enum):
@@ -181,11 +188,13 @@ class FloatValidator(Validator):
             return self.annotation(value)
         elif type_parser.isinstance_safe(value, DecimalValidator.annotation):
             return self.annotation(value)
-        maybe_str = StringValidator.maybe_str(value)
-        if maybe_str:
-            return self.annotation(value)
-
-        raise ValueError('Input should be float')
+        try:
+            maybe_str = StringValidator.maybe_str(value)
+            if maybe_str:
+                return self.annotation(value)
+        except (UnicodeDecodeError, ValueError, TypeError, DataclassCustomError):
+            raise DataclassCustomError('float_parsing', '输入应为有效数字，无法将字符串解析为数字')
+        raise DataclassCustomError('float_parsing', '输入应为有效浮点值')
 
 
 class DecimalValidator(FloatValidator):
@@ -200,12 +209,15 @@ class DecimalValidator(FloatValidator):
         elif type_parser.isinstance_safe(value, IntegerValidator.annotation):
             return self.annotation(value)
         elif type_parser.isinstance_safe(value, FloatValidator.annotation):
-            return self.annotation(value)
-        maybe_str = StringValidator.maybe_str(value)
-        if maybe_str:
-            return self.annotation(value)
-
-        raise ValueError('Input should be decimal')
+            # 防止精度过长
+            return self.annotation(StringValidator.annotation(value))
+        try:
+            maybe_str = StringValidator.maybe_str(value)
+            if maybe_str:
+                return self.annotation(value)
+        except (UnicodeDecodeError, ValueError, TypeError, DataclassCustomError, decimal.InvalidOperation):
+            raise DataclassCustomError('decimal_parsing', '输入应为有效数值')
+        raise DataclassCustomError('decimal_parsing', '输入应为有效数值')
 
 
 class BytesValidator(Validator):
@@ -221,6 +233,7 @@ class BytesValidator(Validator):
             return value.encode('utf-8')
         elif type_parser.isinstance_safe(value, bytearray):
             return self.annotation(value)
+        raise ValueError('输入应为有效字节类型')
 
 
 class TargetTypeValidator(Validator):
@@ -265,7 +278,7 @@ class UnionValidator(Validator):
 
     name = 'union'
     annotation = Union
-    validators: List[Validator] = []
+    validators: List[Validator]
 
     def validate(self, value, **kwargs):
         error = None
@@ -306,7 +319,6 @@ class LiteralValidator(Validator):
     def build(cls, annotation, *args, **kwargs):
         if not type_parser.is_literal(annotation):
             raise ValueError(f"输入应为Literal注解才可构建 {cls.__name__}")
-
         args = get_args(annotation)
         return cls(*args)
 
@@ -487,11 +499,10 @@ class SetValidator(Validator):
             value: set = self.annotation(IterableValidator.extract_iterable(value))
 
     @classmethod
-    def build(cls, annotation: _T, *args, **kwargs) -> 'Validator':
+    def build(cls, annotation: _T, *args, **kwargs) -> 'SetValidator':
         if type_parser.is_iterable(annotation):
             raise ValueError(f"输入应为可迭代类型注解才可构建 {cls.__name__}")
-
-        # return cls()
+        return cls()
 
 
 # TODO
@@ -833,19 +844,26 @@ class UuidValidator(Validator):
     name = 'uuid'
     annotation = uuid.UUID
 
-    def __init__(self, version: optional[int] = None):
+    def __init__(self, version: optional[int] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.version: optional[int] = version
 
     def validate(self, value, **kwargs) -> uuid.UUID:
-        try:
-            if type_parser.isinstance_safe(value, self.annotation):
-                self.check_version(value, self.version)
-                return value
-            maybe_str = StringValidator.maybe_str(value, raise_error=False)
-            if maybe_str:
-                return self.str_to_uuid(maybe_str)
-        except (Exception,):
-            raise ValueError('输入应为有效UUID类型')
+        if type_parser.isinstance_safe(value, self.annotation):
+            self.check_version(value, self.version)
+            return value
+        maybe_str = StringValidator.maybe_str(value, raise_error=False)
+        if maybe_str:
+            return self.str_to_uuid(maybe_str)
+        # try:
+        #     if type_parser.isinstance_safe(value, self.annotation):
+        #         self.check_version(value, self.version)
+        #         return value
+        #     maybe_str = StringValidator.maybe_str(value, raise_error=False)
+        #     if maybe_str:
+        #         return self.str_to_uuid(maybe_str)
+        # except (Exception,):
+        #     raise ValueError('输入应为有效UUID类型')
         raise ValueError('输入应为有效UUID类型')
 
     @staticmethod
@@ -860,19 +878,13 @@ class UuidValidator(Validator):
         return res
 
 
-def matching_validator(annotation: _T):
+def matching_validator(annotation: _T, *args, **kwargs):
     """匹配验证器"""
-    if annotation in BASE_VALIDATORS:
-        return BASE_VALIDATORS[annotation]
-    elif type_parser.is_optional(annotation):
-        return OptionalValidator.build(annotation)
-    elif type_parser.is_union(annotation):
-        return UnionValidator.build(annotation)
-    elif type_parser.is_literal(annotation):
-        return LiteralValidator.build(annotation)
-    elif type_parser.is_tuple(annotation):
-        return TupleValidator.build(annotation)
-    return AnyValidator()
+    origin_annotation = type_parser.get_origin_safe(annotation) or annotation
+    try:
+        return MATCH_VALIDATOR[origin_annotation].build(annotation, *args, **kwargs)
+    except KeyError:
+        return AnyValidator()
 
 
 BASE_VALIDATORS = {
