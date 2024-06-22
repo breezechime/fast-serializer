@@ -849,27 +849,23 @@ class UuidValidator(Validator):
         self.version: optional[int] = version
 
     def validate(self, value, **kwargs) -> uuid.UUID:
-        if type_parser.isinstance_safe(value, self.annotation):
-            self.check_version(value, self.version)
-            return value
-        maybe_str = StringValidator.maybe_str(value, raise_error=False)
-        if maybe_str:
-            return self.str_to_uuid(maybe_str)
-        # try:
-        #     if type_parser.isinstance_safe(value, self.annotation):
-        #         self.check_version(value, self.version)
-        #         return value
-        #     maybe_str = StringValidator.maybe_str(value, raise_error=False)
-        #     if maybe_str:
-        #         return self.str_to_uuid(maybe_str)
-        # except (Exception,):
-        #     raise ValueError('输入应为有效UUID类型')
-        raise ValueError('输入应为有效UUID类型')
+        try:
+            if type_parser.isinstance_safe(value, self.annotation):
+                self.check_version(value, self.version)
+                return value
+            maybe_str = StringValidator.maybe_str(value, raise_error=False)
+            if maybe_str:
+                return self.str_to_uuid(maybe_str)
+        except DataclassCustomError as e:
+            raise e
+        except (ValueError, TypeError):
+            pass
+        raise DataclassCustomError('uuid_parsing', '输入应为有效的UUID')
 
     @staticmethod
     def check_version(value: uuid.UUID, version: optional[int]):
         if version and value.version != version:
-            raise ValueError(f'UUID版本应为{version}')
+            raise DataclassCustomError('uuid_version', f'输入的UUID值版本错误，应为UUID版本`{version}`')
         return True
 
     def str_to_uuid(self, value: str) -> uuid.UUID:
