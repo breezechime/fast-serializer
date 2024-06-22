@@ -436,8 +436,12 @@ class ListValidator(Validator):
     min_length: optional[int]
     max_length: optional[int]
 
-    def __init__(self, item_validator):
-        self.item_validator = item_validator or AnyValidator()
+    def __init__(self, item_validator: Validator, min_length: optional[int] = None, max_length: optional[int] = None,
+                 *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.item_validator = item_validator
+        self.min_length = min_length
+        self.max_length = max_length
 
     def validate(self, value, **kwargs):
         is_list = type_parser.isinstance_safe(value, list)
@@ -750,7 +754,8 @@ class EnumValidator(Validator):
     name = 'enum'
     annotation = enum.Enum
 
-    def __init__(self, target_enum: optional[enum.Enum] = None, use_value: bool = True):
+    def __init__(self, target_enum: optional[enum.Enum] = None, use_value: bool = True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.target_enum: optional[enum.Enum] = target_enum
         self.use_value = use_value
         self.names = []
@@ -809,7 +814,8 @@ class DequeValidator(Validator):
     annotation = collections.deque
     item_validator: Validator
 
-    def __init__(self, item_validator: optional[Validator] = None):
+    def __init__(self, item_validator: optional[Validator] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.item_validator = item_validator or BASE_VALIDATORS[Any]
         self.update_validator()
 

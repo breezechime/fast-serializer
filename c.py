@@ -17,8 +17,7 @@ class Test(BaseModel):
     # def val_name(cls, v):
     #     raise UnicodeDecodeError('utf-8', b'test', 0, 1, 'test')
 
-
-test = Test(test2='sad')
+test = Test(test2='asd')
 print(test.test2)
 # try:
 #     Test(test=123, test2='asd', arr=[1, 2])

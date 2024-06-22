@@ -1,15 +1,12 @@
-import decimal
-import time
 import uuid
-
+from typing import Iterable
 from fast_serializer import FastDataclass, field
 
 
 class Test(FastDataclass):
 
-    name: uuid.UUID = field(val_extra=dict(version=4))
+    name: uuid.UUID = field()
 
 
-print(str(uuid.uuid1()))
-test = Test(name='79585ecf-3091-11ef-b16c-085bd678a05b')
+test = Test(name=Iterable)
 print(test.name)
