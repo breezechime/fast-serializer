@@ -18,7 +18,7 @@ class ErrorDetail:
     """错误详情"""
 
     """键名"""
-    key: str
+    # key: str
 
     """键名索引列表"""
     loc: List[Any]
@@ -35,11 +35,11 @@ class ErrorDetail:
     """上下文信息"""
     ctx: optional[dict[str, Any]]
 
-    __slots__ = ('key', 'loc', 'input_value', 'exception_type', 'msg', 'ctx')
+    __slots__ = ('loc', 'input_value', 'exception_type', 'msg', 'ctx')
 
-    def __init__(self, key: str, loc: List[Any], input_value: Any, exception_type: Union[str, type], msg: str,
+    def __init__(self, loc: List[Any], input_value: Any, exception_type: Union[str, type], msg: str,
                  ctx: optional[dict[str, Any]] = None):
-        self.key = key
+        # self.key = key
         self.loc = loc
         self.input_value = input_value
         self.exception_type = _format_exception_type(exception_type)
@@ -54,7 +54,7 @@ class ErrorDetail:
 
     def __dict__(self):
         return {
-            'key': self.key,
+            # 'key': self.key,
             'loc': self.loc,
             'input_value': self.input_value,
             'exception_type': self.exception_type,
@@ -98,10 +98,10 @@ class ValidationError(ValueError):
             enter_line = '' if index == length - 1 else '\n'
             end_text = (f"["
                         f"exception_type={error.exception_type}, "
-                        f"input_value={error.input_value}, "
+                        f"input_value={error.input_value!r}, "
                         f"input_type={_format_type(error.input_value)}"
                         f"]")
-            text += f"{'.'.join(error.loc)}\n  {error.msg} {end_text}{enter_line}"
+            text += f"{'.'.join([str(e) for e in error.loc])}\n  {error.msg} {end_text}{enter_line}"
         return text
 
 

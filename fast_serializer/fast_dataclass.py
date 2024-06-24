@@ -214,7 +214,12 @@ def _generate_field(cls, field_name: str, annotation: type, dataclass_config: Da
     field.set_annotation(annotation)
 
     # 查找验证器
-    field.validator = matching_validator(annotation, **field.val_extra or dict())
+    field.val_extra = field.val_extra or dict()
+    if field.min_length:
+        field.val_extra['min_length'] = field.min_length
+    if field.max_length:
+        field.val_extra['max_length'] = field.max_length
+    field.validator = matching_validator(annotation, **field.val_extra)
 
     # 接下来是对InitVar和ClassVar的支持
     # Assume it's a normal field until proven otherwise.  We're next

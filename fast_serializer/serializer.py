@@ -43,11 +43,15 @@ class FastSerializer:
                     input_value = field.validator.validate(input_value)
 
                 instance.__setattr__(field_name, input_value)
+            except ValidationError as e:
+                for error in e.line_errors:
+                    error.loc.insert(0, field_name)
+                errors.extend(e.line_errors)
             except self.catch_val_exceptions as e:
-                # raise e
+                raise e
                 if type(e) is DataclassCustomError:
                     error_detail = ErrorDetail(
-                        key=field_name,
+                        # key=field_name,
                         loc=[field_name],
                         input_value=input_value,
                         exception_type=e.exception_type,
@@ -55,7 +59,7 @@ class FastSerializer:
                     )
                 else:
                     error_detail = ErrorDetail(
-                        key=field_name,
+                        # key=field_name,
                         loc=[field_name],
                         input_value=input_value,
                         exception_type=e,

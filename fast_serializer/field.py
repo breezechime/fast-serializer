@@ -141,7 +141,16 @@ class Field:
 # This function is used instead of exposing Field creation directly,
 # so that a type checker can be told (via overloads) that this is a
 # function whose type depends on its parameters.
-def field(*, default=None, default_factory=None, required=False, val_extra: dict = None, **kwargs) -> Field:
+def field(
+    default=None,
+    *,
+    default_factory=None,
+    required: optional[bool] = None,
+    min_length: optional[int] = None,
+    max_length: optional[int] = None,
+    val_extra: optional[dict] = None,
+    **kwargs
+) -> Field:
     """Return an object to identify dataclass fields.
 
     default is the default value of the field.  default_factory is a
@@ -155,7 +164,8 @@ def field(*, default=None, default_factory=None, required=False, val_extra: dict
 
     It is an error to specify both default and default_factory.
     """
-    return Field(default=default, default_factory=default_factory, required=required, val_extra=val_extra, **kwargs)
+    return Field(default=default, default_factory=default_factory, required=required, min_length=min_length,
+                 max_length=max_length, val_extra=val_extra, **kwargs)
 
 
 _DEFAULT_FIELD_VALUES: dict = dict(
