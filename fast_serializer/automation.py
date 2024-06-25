@@ -1,7 +1,6 @@
 # -*- coding:utf-8 -*-
 from typing import Type, Dict
-
-from . import Field
+from .field import Field
 from .constants import _DATACLASS_FIELDS_NAME, _T
 from .fast_dataclass import generate_fast_dataclass
 

@@ -3,13 +3,12 @@ import json
 from typing import (
     Any, List, Union
 )
-from .utils import camel_to_snake, _format_type
 from .types import optional
-from .type_parser import type_parser
+from .utils import camel_to_snake, _format_type, isinstance_safe
 
 
 def _format_exception_type(exception_type: Union[str, type]) -> str:
-    if type_parser.isinstance_safe(exception_type, str):
+    if isinstance_safe(exception_type, str):
         return exception_type
     return camel_to_snake(exception_type.__class__.__name__)
 

@@ -19,6 +19,8 @@ from typing import (
     get_origin, Iterable, Set,
 )
 
+from fast_serializer.utils import isinstance_safe, issubclass_safe
+
 
 class TypeParser:
     """类型解析器"""
@@ -76,81 +78,68 @@ class TypeParser:
         """是否集合类型的"""
         if value is None:
             return False
-        return self.issubclass_safe(get_origin(value), Collection)
+        return issubclass_safe(get_origin(value), Collection)
 
     def is_deque(self, value) -> bool:
         """是否双端队列类型的"""
         if value is None:
             return False
-        return self.isinstance_safe(value, collections.deque)
+        return isinstance_safe(value, collections.deque)
 
     def is_iterable(self, value) -> bool:
         """是否可迭代类型的"""
         if value is None:
             return False
-        return value is Iterable or self.issubclass_safe(get_origin(value), Iterable)
+        return value is Iterable or issubclass_safe(get_origin(value), Iterable)
 
     def is_list(self, value) -> bool:
         """是否列表类型的"""
         if value is None:
             return False
-        return self.isinstance_safe(value, list) or self.issubclass_safe(get_origin(value), List)
+        return isinstance_safe(value, list) or issubclass_safe(get_origin(value), List)
 
     def is_tuple(self, value) -> bool:
         """是否元组类型的"""
         if value is None:
             return False
-        return self.isinstance_safe(value, tuple) or self.issubclass_safe(get_origin(value), Tuple)
+        return isinstance_safe(value, tuple) or issubclass_safe(get_origin(value), Tuple)
 
     def is_set(self, value) -> bool:
         """是否集合类型的"""
         if value is None:
             return False
-        return self.isinstance_safe(value, set) or self.issubclass_safe(get_origin(value), Set)
+        return isinstance_safe(value, set) or issubclass_safe(get_origin(value), Set)
 
     def is_mapping(self, value) -> bool:
         """是否映射类型的"""
         if value is None:
             return False
-        return self.issubclass_safe(get_origin(value), Mapping)
+        return issubclass_safe(get_origin(value), Mapping)
 
     def is_dict(self, value) -> bool:
         """是否字典类型的"""
         if value is None:
             return False
-        return value is Dict or self.isinstance_safe(value, dict) or self.issubclass_safe(get_origin(value), Dict)
+        return value is Dict or isinstance_safe(value, dict) or issubclass_safe(get_origin(value), Dict)
 
     def is_sequence(self, value) -> bool:
         """是否序列类型的"""
         if value is None:
             return False
-
-        return self.issubclass_safe(get_origin(value), Sequence)
+        return issubclass_safe(get_origin(value), Sequence)
 
     def is_counter(self, value) -> bool:
         """是否计数器类型的"""
         if value is None:
             return False
-        return self.issubclass_safe(get_origin(value), Counter)
+        return issubclass_safe(get_origin(value), Counter)
 
     def is_function(self, value) -> bool:
         """是否为函数"""
-        return self.isinstance_safe(value, FunctionType)
+        return isinstance_safe(value, FunctionType)
 
     def get_origin_safe(self, v):
         return get_origin(v)
-
-    def issubclass_safe(self, value, target_type):
-        try:
-            return issubclass(value, target_type)
-        except (Exception,):
-            return False
-
-    def isinstance_safe(self, value, target_type):
-        try:
-            return isinstance(value, target_type)
-        except (Exception,):
-            return False
 
     def repair_type(self, value):
         """检查类型是否合法，并修正"""
