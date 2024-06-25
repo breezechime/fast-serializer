@@ -58,6 +58,12 @@ _DATACLASS_CONFIG_NAME = 'dataclass_config'
 
 _FAST_SERIALIZER_NAME = '__fast_serializer__'
 
+_VALIDATOR_KWARGS_NAME = 'validator_kwargs'
+
+_SUB_VALIDATOR_KWARGS_NAME = 'sub_validator_kwargs'
+
+_SERIALIZER_KWARGS_NAME = 'serializer_kwargs'
+
 # 数据类装饰器名
 _FAST_DATACLASS_DECORATORS_NAME = '__fast_dataclass_decorators__'
 

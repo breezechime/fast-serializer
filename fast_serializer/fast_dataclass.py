@@ -5,12 +5,12 @@ import functools
 import sys
 from dataclasses import Field as DataclassField
 from types import MemberDescriptorType, GenericAlias, FunctionType
-from typing import ClassVar, Dict, dataclass_transform, Type, Any, List
+from typing import ClassVar, Dict, Type, Any, List
 
 from .constants import (_T, _DATACLASS_CONFIG_NAME, _DATACLASS_FIELDS_NAME, _BASE_FIELD,
                         _MODULE_IDENTIFIER_RE, InitVar, _FIELD_CLASS_VAR, _FIELD_INIT_VAR,
                         _FAST_DATACLASS_DECORATORS_NAME,
-                        _FAST_SERIALIZER_NAME)
+                        _FAST_SERIALIZER_NAME, _SUB_VALIDATOR_KWARGS_NAME)
 from .dataclass_config import DataclassConfig
 from .decorators import FastDataclassDecoratorInfo
 from .field import Field
@@ -213,13 +213,16 @@ def _generate_field(cls, field_name: str, annotation: type, dataclass_config: Da
     field.frozen = dataclass_config.frozen
     field.set_annotation(annotation)
 
-    # 查找验证器
-    field.val_extra = field.val_extra or dict()
+    # 组装验证器参数传递
+    field.validator_kwargs = field.validator_kwargs or dict()
     if field.min_length:
-        field.val_extra['min_length'] = field.min_length
+        field.validator_kwargs['min_length'] = field.min_length
     if field.max_length:
-        field.val_extra['max_length'] = field.max_length
-    field.validator = matching_validator(annotation, **field.val_extra)
+        field.validator_kwargs['max_length'] = field.max_length
+    if field.sub_validator_kwargs:
+        field.validator_kwargs[_SUB_VALIDATOR_KWARGS_NAME] = field.sub_validator_kwargs
+    # 查找对应类型的验证器
+    field.validator = matching_validator(annotation, **field.validator_kwargs)
 
     # 接下来是对InitVar和ClassVar的支持
     # Assume it's a normal field until proven otherwise.  We're next
@@ -480,7 +483,7 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
     return cls
 
 
-@dataclass_transform(kw_only_default=True, field_specifiers=(Field,))
+# @dataclass_transform(kw_only_default=True, field_specifiers=(Field,))
 class FastDataclassMeta(type):
 
     def __new__(cls, name, bases, dct, **kwargs):
@@ -504,7 +507,7 @@ class FastDataclass(metaclass=FastDataclassMeta):
     dataclass_fields: ClassVar[Dict[str, Field]]
 
     """用于存放数据类的装饰器数据"""
-    __fast_dataclass_decorators__: ClassVar[FastDataclassDecoratorInfo]
+    # __fast_dataclass_decorators__: ClassVar[FastDataclassDecoratorInfo]
 
     """JsonSchema"""
     # __fast_schema__: ClassVar[JsonSchema] = JsonSchema()

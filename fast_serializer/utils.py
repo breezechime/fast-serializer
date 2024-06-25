@@ -1,6 +1,9 @@
 # -*- coding:utf-8 -*-
 import _thread
 import functools
+from typing import Union
+
+from .constants import _SUB_VALIDATOR_KWARGS_NAME
 
 
 def _recursive_repr(user_function):
@@ -19,6 +22,7 @@ def _recursive_repr(user_function):
         finally:
             repr_running.discard(key)
         return result
+
     return wrapper
 
 
@@ -41,3 +45,33 @@ def camel_to_snake(text: str) -> str:
 def snake_to_camel(text: str) -> str:
     """下划线转驼峰"""
     return ''.join(w.capitalize() for w in text.split('_'))
+
+
+def isinstance_safe(v, tp) -> bool:
+    """安全的检查类型"""
+    try:
+        return isinstance(v, tp)
+    except (Exception,):
+        return False
+
+
+def issubclass_safe(v, tp) -> bool:
+    try:
+        return issubclass(v, tp)
+    except (Exception,):
+        return False
+
+
+def get_sub_validator_kwargs(validator_kwargs: Union[dict, list], index: int = 0) -> dict:
+    try:
+        sub_validator_kwargs = validator_kwargs[_SUB_VALIDATOR_KWARGS_NAME]
+        if isinstance(sub_validator_kwargs, dict):
+            del validator_kwargs[_SUB_VALIDATOR_KWARGS_NAME]
+            return sub_validator_kwargs
+        else:
+            kwargs = sub_validator_kwargs[index]
+            if index == len(sub_validator_kwargs) - 1:
+                validator_kwargs.pop(_SUB_VALIDATOR_KWARGS_NAME)
+            return kwargs
+    except (KeyError,):
+        return dict()

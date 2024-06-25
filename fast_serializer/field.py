@@ -1,6 +1,6 @@
 # -*- coding:utf-8 -*-
 import dataclasses
-from typing import Optional, Any, Callable
+from typing import Optional, Any, Callable, Union
 from .types import optional, number
 from .utils import _recursive_repr, _format_type
 from .validator import Validator
@@ -73,10 +73,16 @@ class Field:
     init_var: optional[bool]
 
     """验证器参数"""
-    val_extra: optional[dict]
+    validator_kwargs: optional[Union[dict, list]]
 
     """序列化器参数"""
-    ser_extra: optional[dict]
+    ser_extras: optional[Union[dict, list]]
+
+    """子验证器参数"""
+    sub_validator_kwargs: optional[Union[dict, list]]
+
+    """子序列化器参数"""
+    subser_extras: optional[Union[dict, list]]
 
     __slots__ = (
         'name',
@@ -100,8 +106,10 @@ class Field:
         'deprecated',
         'frozen',
         'init_var',
-        'val_extra',
-        'ser_extra',
+        'validator_kwargs',
+        'serializer_kwargs',
+        'sub_validator_kwargs',
+        'sub_serializer_kwargs',
         '_field_type'
     )
 
@@ -148,7 +156,8 @@ def field(
     required: optional[bool] = None,
     min_length: optional[int] = None,
     max_length: optional[int] = None,
-    val_extra: optional[dict] = None,
+    validator_kwargs: optional[dict] = None,
+    sub_validator_kwargs: optional[Union[dict, list]] = None,
     **kwargs
 ) -> Field:
     """Return an object to identify dataclass fields.
@@ -165,7 +174,8 @@ def field(
     It is an error to specify both default and default_factory.
     """
     return Field(default=default, default_factory=default_factory, required=required, min_length=min_length,
-                 max_length=max_length, val_extra=val_extra, **kwargs)
+                 max_length=max_length, validator_kwargs=validator_kwargs, sub_validator_kwargs=sub_validator_kwargs,
+                 **kwargs)
 
 
 _DEFAULT_FIELD_VALUES: dict = dict(
@@ -190,6 +200,8 @@ _DEFAULT_FIELD_VALUES: dict = dict(
     deprecated=None,
     frozen=None,
     init_var=None,
-    val_extra=None,
-    ser_extra=None,
+    validator_kwargs=None,
+    ser_extras=None,
+    sub_validator_kwargs=None,
+    subser_extras=None,
 )

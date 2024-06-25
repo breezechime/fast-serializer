@@ -21,34 +21,30 @@ class FastSerializer:
 
     def deserialize(self, data: Union[dict, object], target=None, instance=None) -> _T:
         """反序列化 Deserialize"""
-        if target is None and instance is None:
-            raise RuntimeError('目标类和实例不能同时为空')
+        # if target is None and instance is None:
+        #     raise RuntimeError('目标类和实例不能同时为空')
 
         if target is None:
             target = instance.__class__
         class_name: str = target.__name__
-
-        is_dict = type_parser.is_dict(data)
         dataclass_fields: Dict[str, Field] = getattr(target, _DATACLASS_FIELDS_NAME, {})
         errors = []
         for field_name, field in dataclass_fields.items():
-            input_value = self._get_value(data, is_dict, field_name, field)
+            input_value = self._get_value(data, True, field_name, field)
             try:
                 """数据为必填项"""
                 if input_value is None and field.required:
                     raise DataclassCustomError('missing', f"{field_name} 为必填项")
-
-                """验证数据"""
-                if input_value is not None:
+                elif input_value is not None:
                     input_value = field.validator.validate(input_value)
 
-                instance.__setattr__(field_name, input_value)
+                setattr(instance, field_name, input_value)
             except ValidationError as e:
                 for error in e.line_errors:
                     error.loc.insert(0, field_name)
                 errors.extend(e.line_errors)
             except self.catch_val_exceptions as e:
-                raise e
+                # raise e
                 if type(e) is DataclassCustomError:
                     error_detail = ErrorDetail(
                         # key=field_name,
@@ -83,14 +79,3 @@ class FastSerializer:
         except (KeyError, AttributeError):
             value = field.get_default_value()
         return value
-
-    def _validate_value(self, value, target_type):
-        """内置验证器会尝试帮你转换类型，如果不成功将抛出异常"""
-        # 基本数据类型验证器
-        if target_type in self.__base_validators__:
-            return self.__base_validators__[target_type].validate(value)
-        elif type_parser.issubclass_safe(target_type, enum.Enum):
-            return EnumValidator(target_enum=target_type).validate(value)
-        elif type_parser.is_tuple(target_type):
-            return TupleValidator()
-        raise NotImplementedError(f"类型 {_format_type(target_type)} 未被支持")

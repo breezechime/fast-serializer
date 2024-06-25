@@ -1,5 +1,6 @@
 # -*- coding:utf-8 -*-
 import collections
+from types import FunctionType
 from typing import (
     Optional,
     Union,
@@ -130,8 +131,11 @@ class TypeParser:
         """是否计数器类型的"""
         if value is None:
             return False
-
         return self.issubclass_safe(get_origin(value), Counter)
+
+    def is_function(self, value) -> bool:
+        """是否为函数"""
+        return self.isinstance_safe(value, FunctionType)
 
     def get_origin_safe(self, v):
         return get_origin(v)
