@@ -1,5 +1,8 @@
 import time
+from typing import Callable
+
 from fast_serializer import FastDataclass
+from fast_serializer.validator import FunctionValidator, CallableValidator
 
 
 class Test(FastDataclass):
@@ -7,10 +10,13 @@ class Test(FastDataclass):
     arr: list[int]
 
 
-now = time.time()
-arr = []
-for i in range(1000):
-    test = Test(arr=[i, '2', 3.0])
-    arr.append(test.arr)
-print(time.time() - now)
+def test(v: str):
+    print(v)
+
+
+# print(Test.)
+# val = FunctionValidator.build(test)
+# val.validate(())
+# val = CallableValidator.build(Callable)
+# print(val)
 # print(arr)
