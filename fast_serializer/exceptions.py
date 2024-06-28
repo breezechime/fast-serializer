@@ -144,3 +144,16 @@ class DataclassCustomError(ValueError):
                 # fallback for anything else just in case
                 message = message.replace(placeholder, str(value))
         return message
+
+
+class ValidatorBuildingError(TypeError):
+
+    def __init__(self, msg: str, *args):
+        super().__init__(*args)
+        self.msg = msg
+
+    def __str__(self):
+        return self.msg
+
+    def __repr__(self):
+        return self.__str__()

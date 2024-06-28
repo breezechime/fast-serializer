@@ -18,10 +18,6 @@ from .serializer import FastSerializer
 from .validator import matching_validator
 
 
-def is_fast_dataclass(instance):
-    return isinstance(instance, FastDataclass)
-
-
 def _tuple_str(obj_name, fields: List[Field]):
     # Return a string representing each field of obj_name as a tuple
     # member.  So, if fields is ['x', 'y'] and obj_name is "self",

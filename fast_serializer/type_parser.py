@@ -18,7 +18,8 @@ from typing import (
     Counter,
     get_origin, Iterable, Set,
 )
-from fast_serializer.utils import isinstance_safe, issubclass_safe
+from .constants import _DATACLASS_FIELDS_NAME
+from .utils import isinstance_safe, issubclass_safe
 
 
 class TypeParser:
@@ -136,6 +137,10 @@ class TypeParser:
     def is_function(self, value) -> bool:
         """是否为函数"""
         return isinstance_safe(value, FunctionType)
+
+    def is_fast_dataclass(obj):
+        cls = obj if isinstance(obj, type) else type(obj)
+        return hasattr(cls, _DATACLASS_FIELDS_NAME)
 
     def is_pydantic_model(self, value) -> bool:
         """是否为pydantic模型"""

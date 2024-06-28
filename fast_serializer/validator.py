@@ -1,5 +1,5 @@
 # -*- coding:utf-8 -*-
-import collections
+import collections.abc
 import datetime
 import decimal
 import enum
@@ -11,13 +11,11 @@ from abc import ABC, abstractmethod
 from decimal import Decimal
 from types import FunctionType
 from typing import (
-    Any, Deque, Generator, Union, Collection, Iterable, Literal, NoReturn, List, get_args, Tuple, Set, Dict, Optional,
-    Sequence, Mapping, Callable, TypedDict
+    Any, Generator, Union, Collection, Iterable, Literal, List, get_args, Tuple, Set, Dict, Optional,
+    Sequence, Mapping, Callable, TypedDict, FrozenSet
 )
-
-from . import FastDataclass
 from .constants import _T
-from .exceptions import DataclassCustomError, ErrorDetail, ValidationError
+from .exceptions import DataclassCustomError, ErrorDetail, ValidationError, ValidatorBuildingError
 from .type_parser import type_parser
 from .types import optional
 from .utils import _format_type, get_sub_validator_kwargs, isinstance_safe, issubclass_safe
@@ -43,7 +41,7 @@ class Validator(ABC):
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'Validator':
-        return cls(**kwargs)
+        return cls(annotation=annotation, **kwargs)
 
 
 class AnyValidator(Validator):
@@ -281,7 +279,6 @@ class OptionalValidator(Validator):
         return f"{self.validator_name}[{self.validator.name}]"
 
 
-# TODO
 class UnionValidator(Validator):
     """联合类型验证器"""
 
@@ -289,24 +286,33 @@ class UnionValidator(Validator):
     annotation = Union
     validators: List[Validator]
 
+    def __init__(self, validators: List[Validator], **kwargs):
+        super().__init__(**kwargs)
+        self.validators = validators
+
     def validate(self, value, **kwargs):
-        error = None
+        err: optional[ErrorDetail] = None
         for validator in self.validators:
-            try:
-                return validator.validate(value)
-            except (Exception,) as e:
-                error = e
-                continue
-        raise error
+            errs: List[ErrorDetail] = []
+            v = catch_validate_error(value, validator, [], errs)
+            if not errs:
+                return v
+            err = errs[-1]
+        raise DataclassCustomError(err.exception_type, err.msg)
 
     @classmethod
     def build(cls, annotation: _T, **kwargs):
-        raise NotImplementedError('asd')
-        # if not type_parser.is_union(annotation):
-        #     raise ValueError(f"输入应为Union注解才可构建 {cls.__name__}")
-        # validator = cls()
-        # validator.validators = [matching_validator(ann) for ann in get_args(annotation)]
-        # return validator
+        args = get_args(annotation)
+        if not args:
+            raise ValidatorBuildingError(f"使用Union注解至少需要有一种类型才可构建 {cls.__name__}")
+        if not type_parser.is_union(annotation):
+            raise ValidatorBuildingError(f"输入应为Union注解才可构建 {cls.__name__}")
+        validators = [matching_validator(sub, **get_sub_validator_kwargs(kwargs, i)) for i, sub in enumerate(args)]
+        return cls(validators=validators, **kwargs)
+
+    @property
+    def name(self) -> str:
+        return f"{self.validator_name}[{', '.join([val.name for val in self.validators])}]"
 
 
 class LiteralValidator(Validator):
@@ -353,10 +359,29 @@ class FastDataclassValidator(Validator):
     """快速数据类验证器"""
 
     validator_name = 'fast_dataclass'
-    annotation = FastDataclass
+
+    def __init__(self, annotation: _T, **kwargs):
+        super().__init__(**kwargs)
+        self.annotation = annotation
 
     def validate(self, value, **kwargs):
-        pass
+        if isinstance_safe(value, self.annotation):
+            return value
+        if isinstance_safe(value, dict):
+            return self.annotation(**value)
+        # TODO from obj
+        raise NotImplementedError('error')
+        # return self.annotation
+
+    @property
+    def name(self) -> str:
+        return _format_type(self.annotation)
+
+    @classmethod
+    def build(cls, annotation: _T, **kwargs) -> 'FastDataclassValidator':
+        if not type_parser.is_fast_dataclass(annotation):
+            raise DataclassCustomError('fast_dataclass_parsing', '输入应为快速数据类')
+        return cls(annotation=annotation, **kwargs)
 
 
 class PydanticModelValidator(Validator):
@@ -381,6 +406,7 @@ class PydanticModelValidator(Validator):
         return cls(annotation=annotation, **kwargs)
 
 
+# TODO
 class DataclassValidator(Validator):
     """数据类验证器"""
 
@@ -419,24 +445,23 @@ class DictValidator(Validator):
             raise DataclassCustomError('dict_type', '输入应为有效键值对')
         # 验证长度
         length = len(value)
-        IterableValidator.check_length(self.annotation, length, self.min_length, self.max_length)
+        check_collection_length(self.annotation, length, self.min_length, self.max_length)
         # 优化（双any可省略很多验证性能）
         key_validator_is_any = self.key_validator.annotation is Any
         value_validator_is_any = self.value_validator.annotation is Any
         if key_validator_is_any and value_validator_is_any:
             return value
+        errs: List[ErrorDetail] = []
         # 验证keys(any优化)
         if key_validator_is_any:
-            keys: list = value.keys()
+            keys = value.keys()
         else:
-            keys: list = []
-            IterableValidator.validate_iter(self.name, self.key_validator, value.keys(), keys)
+            keys = [catch_validate_error(v, self.key_validator, [i], errs) for i, v in enumerate(value.keys())]
         # 验证values
         if value_validator_is_any:
-            values: list = value.values()
+            values = value.values()
         else:
-            values: list = []
-            IterableValidator.validate_iter(self.name, self.value_validator, value.values(), values)
+            values = [catch_validate_error(v, self.value_validator, [i], errs) for i, v in enumerate(value.values())]
         res_dict = self.annotation(zip(keys, values))
         return res_dict
 
@@ -469,96 +494,96 @@ class TypedDictValidator(Validator):
         pass
 
 
-class IterableValidator(Validator):
-    """可迭代验证器"""
-
-    validator_name = 'iterable'
-    annotation = Iterable
-    item_validator: Validator
-    min_length: optional[int]
-    max_length: optional[int]
-
-    def __init__(self, item_validator: Validator, min_length: optional[int] = None, max_length: optional[int] = None,
-                 **kwargs):
-        super().__init__(**kwargs)
-        self.item_validator = item_validator
-        self.min_length = min_length
-        self.max_length = max_length
-
-    def validate(self, value, **kwargs):
-        is_iterable = isinstance_safe(value, Iterable)
-        if not is_iterable:
-            raise DataclassCustomError('iterable_type', f'输入应为可迭代类型')
-        # 验证长度
-        IterableValidator.check_length(self.annotation, len(value), self.min_length, self.max_length)
-        results = []
-        IterableValidator.validate_iter(self.name, self.item_validator, value, results)
-        return results
-
-    @staticmethod
-    def validate_iter(name: str, item_validator: Validator, value, results):
-        errors: List[ErrorDetail] = []
-        # 验证子元素
-        for index, item in enumerate(value):
-            try:
-                results.append(item_validator.validate(item))
-            except ValidationError as e:
-                for error in e.errors():
-                    error.loc.insert(0, index)
-                errors.extend(e.line_errors)
-            except DataclassCustomError as e:
-                error = ErrorDetail(
-                    # key=str(index),
-                    loc=[index],
-                    input_value=item,
-                    exception_type=e.exception_type,
-                    msg=e.msg,
-                )
-                errors.append(error)
-            except (ValueError, TypeError) as e:
-                error = ErrorDetail(
-                    # key=str(index),
-                    loc=[index],
-                    input_value=item,
-                    exception_type=type(e),
-                    msg=str(e),
-                )
-                errors.append(error)
-        if errors:
-            raise ValidationError(title=name, line_errors=errors)
-
-    @staticmethod
-    def check_length(annotation, length: int, min_length: int, max_length: int):
-        annotation_texts = {
-            list: '列表',
-            tuple: '元祖',
-            dict: '字典',
-            set: '集合',
-            frozenset: '冻结集合',
-            Collection: '集合'
-        }
-        annotation_text = annotation_texts.get(annotation, '可迭代类型')
-        if min_length is not None and length < min_length:
-            raise DataclassCustomError(
-                'iter_too_short',
-                f'{annotation_text}最小应包含{min_length}项，而不是{length}项'
-            )
-        elif max_length is not None and length > max_length:
-            raise DataclassCustomError(
-                'iter_too_long',
-                f'{annotation_text}最多应包含{max_length}项，而不是{length}项'
-            )
-
-    @classmethod
-    def build(cls, annotation: _T, **kwargs) -> 'IterableValidator':
-        _args = get_args(annotation)
-        sub_annotation = _args[0] if _args else Any
-        item_validator = matching_validator(sub_annotation, **get_sub_validator_kwargs(kwargs))
-        return cls(item_validator=item_validator, **kwargs)
-
-    @property
-    def name(self) -> str:
-        return f'{self.validator_name}[{self.item_validator.name}]'
+# class IterableValidator(Validator):
+#     """可迭代验证器"""
+#
+#     validator_name = 'iterable'
+#     annotation = Iterable
+#     item_validator: Validator
+#     min_length: optional[int]
+#     max_length: optional[int]
+#
+#     def __init__(self, item_validator: Validator, min_length: optional[int] = None, max_length: optional[int] = None,
+#                  **kwargs):
+#         super().__init__(**kwargs)
+#         self.item_validator = item_validator
+#         self.min_length = min_length
+#         self.max_length = max_length
+#
+#     def validate(self, value, **kwargs):
+#         is_iterable = isinstance_safe(value, Iterable)
+#         if not is_iterable:
+#             raise DataclassCustomError('iterable_type', f'输入应为可迭代类型')
+#         # 验证长度
+#         IterableValidator.check_length(self.annotation, len(value), self.min_length, self.max_length)
+#         results = []
+#         IterableValidator.validate_iter(self.name, self.item_validator, value, results)
+#         return results
+#
+#     @staticmethod
+#     def validate_iter(name: str, item_validator: Validator, value, results):
+#         errors: List[ErrorDetail] = []
+#         # 验证子元素
+#         for index, item in enumerate(value):
+#             try:
+#                 results.append(item_validator.validate(item))
+#             except ValidationError as e:
+#                 for error in e.errors():
+#                     error.loc.insert(0, index)
+#                 errors.extend(e.line_errors)
+#             except DataclassCustomError as e:
+#                 error = ErrorDetail(
+#                     # key=str(index),
+#                     loc=[index],
+#                     input_value=item,
+#                     exception_type=e.exception_type,
+#                     msg=e.msg,
+#                 )
+#                 errors.append(error)
+#             except (ValueError, TypeError) as e:
+#                 error = ErrorDetail(
+#                     # key=str(index),
+#                     loc=[index],
+#                     input_value=item,
+#                     exception_type=type(e),
+#                     msg=str(e),
+#                 )
+#                 errors.append(error)
+#         if errors:
+#             raise ValidationError(title=name, line_errors=errors)
+#
+#     @staticmethod
+#     def check_length(annotation, length: int, min_length: int, max_length: int):
+#         annotation_texts = {
+#             list: '列表',
+#             tuple: '元祖',
+#             dict: '字典',
+#             set: '集合',
+#             frozenset: '冻结集合',
+#             Collection: '集合'
+#         }
+#         annotation_text = annotation_texts.get(annotation, '可迭代类型')
+#         if min_length is not None and length < min_length:
+#             raise DataclassCustomError(
+#                 'iter_too_short',
+#                 f'{annotation_text}最小应包含{min_length}项，而不是{length}项'
+#             )
+#         elif max_length is not None and length > max_length:
+#             raise DataclassCustomError(
+#                 'iter_too_long',
+#                 f'{annotation_text}最多应包含{max_length}项，而不是{length}项'
+#             )
+#
+#     @classmethod
+#     def build(cls, annotation: _T, **kwargs) -> 'IterableValidator':
+#         _args = get_args(annotation)
+#         sub_annotation = _args[0] if _args else Any
+#         item_validator = matching_validator(sub_annotation, **get_sub_validator_kwargs(kwargs))
+#         return cls(item_validator=item_validator, **kwargs)
+#
+#     @property
+#     def name(self) -> str:
+#         return f'{self.validator_name}[{self.item_validator.name}]'
 
 
 class ListValidator(Validator):
@@ -576,26 +601,23 @@ class ListValidator(Validator):
         self.item_validator = item_validator
         self.min_length = min_length
         self.max_length = max_length
-        self.update_validator()
 
     def validate(self, value, **kwargs):
-        value = extract_collection(value, 'list_type', '列表')
+        collection = extract_collection(value, 'list_type', '列表')
         # 验证长度
-        IterableValidator.check_length(self.annotation, len(value), self.min_length, self.max_length)
+        check_collection_length(self.annotation, len(collection), self.min_length, self.max_length)
         # 优化
         if self.item_validator.annotation is Any:
-            return self.annotation(value) if not isinstance_safe(value, self.annotation) else value
-        results: list = []
-        # 验证
-        IterableValidator.validate_iter(self.name, self.item_validator, value, results)
-        return results
-
-    def __repr__(self):
-        return (f"{self.__class__.__name__}(\n\t"
-                f"name: {self.name},\n\t"
-                f"annotation: {self.annotation}\n\t"
-                f"item_validator: {self.item_validator},\n\t"
-                f"\n)")
+            is_list = isinstance_safe(collection, list)
+            return collection if is_list else self.annotation(collection)
+        errs: List[ErrorDetail] = []
+        result: list = [
+            catch_validate_error(item, self.item_validator, [i], errs)
+            for i, item in enumerate(collection)
+        ]
+        if errs:
+            raise ValidationError(title=self.name, line_errors=errs)
+        return result
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'ListValidator':
@@ -604,8 +626,9 @@ class ListValidator(Validator):
         item_validator = matching_validator(sub_annotation, **get_sub_validator_kwargs(kwargs))
         return cls(item_validator=item_validator, **kwargs)
 
-    def update_validator(self) -> None:
-        self.name = f'list[{self.item_validator.name}]'
+    @property
+    def name(self) -> str:
+        return f'{self.validator_name}[{self.item_validator.name}]'
 
 
 class TupleValidator(Validator):
@@ -613,40 +636,75 @@ class TupleValidator(Validator):
 
     validator_name = 'tuple'
     annotation = tuple
-    item_validator: Validator
+    validators: List[Validator]
+    variadic: bool = True
     min_length: optional[int]
     max_length: optional[int]
 
-    def __init__(self, item_validator: Validator, min_length: optional[int] = None, max_length: optional[int] = None,
-                 **kwargs):
+    def __init__(self, validators: List[Validator], variadic: bool = False, min_length: optional[int] = None,
+                 max_length: optional[int] = None, **kwargs):
         super().__init__(**kwargs)
-        self.item_validator = item_validator
+        self.validators = validators
+        self.variadic = variadic
         self.min_length = min_length
         self.max_length = max_length
-        self.update_validator()
 
     def validate(self, value, **kwargs):
-        is_iterable = isinstance_safe(value, Iterable)
-        if not is_iterable:
-            raise DataclassCustomError('tuple_type', f'输入应为元组类型')
-        # 验证长度
-        IterableValidator.check_length(self.annotation, len(value), self.min_length, self.max_length)
-        results = []
-        IterableValidator.validate_iter(self.name, self.item_validator, value, results)
-        return results
+        collection = extract_collection(value, 'tuple_type', '元祖')
+        # 检查长度
+        length = len(collection)
+        check_collection_length(self.annotation, length, self.min_length, self.max_length)
+        errs: List[ErrorDetail] = []
+        # 不是无限延伸的元祖
+        if not self.variadic:
+            should_be_length = len(self.validators)
+            if length > should_be_length:
+                raise DataclassCustomError(
+                    'too_long',
+                    f'验证后元组最多应包含{should_be_length}个项目，而不是{length}个'
+                )
+            result: list = []
+            for i, val in enumerate(self.validators):
+                try:
+                    v = collection[i]
+                    result.append(catch_validate_error(v, val, [i], errs))
+                except IndexError:
+                    errs.append(ErrorDetail([i], collection, 'missing', '字段为必填项'))
+            if errs:
+                raise ValidationError(title=self.name, line_errors=errs)
+            return tuple(result)
+        # 可变
+        validator = self.validators[0]
+        result: tuple = tuple(
+            catch_validate_error(item, validator, [i], errs)
+            for i, item in enumerate(collection)
+        )
+        if errs:
+            raise ValidationError(title=self.name, line_errors=errs)
+        return result
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'TupleValidator':
-        _args = get_args(annotation)
-        sub_annotation = _args[0] if _args else Any
-        item_validator = matching_validator(sub_annotation, **get_sub_validator_kwargs(kwargs))
-        return cls(item_validator=item_validator, **kwargs)
+        args = get_args(annotation)
+        if Ellipsis in args:
+            variadic = True
+            args = list(args)
+            args.remove(Ellipsis)
+        else:
+            variadic = False
+        validators = [matching_validator(sub, **get_sub_validator_kwargs(kwargs, i)) for i, sub in enumerate(args)]
+        if not validators:
+            validators = [BASE_VALIDATORS[Any]]
+            variadic = True
+        if variadic and len(validators) > 1:
+            raise ValidatorBuildingError(f'可变元组只能有一种类型')
+        return cls(validators=validators, variadic=variadic, **kwargs)
 
-    def update_validator(self) -> None:
-        self.name = f'list[{self.item_validator.name}]'
+    @property
+    def name(self) -> str:
+        return f'{self.validator_name}[{", ".join([val.name for val in self.validators])}]'
 
 
-# TODO
 class SetValidator(Validator):
     """集合验证器"""
 
@@ -664,24 +722,77 @@ class SetValidator(Validator):
         self.max_length = max_length
 
     def validate(self, value, **kwargs):
-        pass
+        collection = extract_collection(value, 'set_type', '集合')
+        # 检查长度
+        check_collection_length(self.annotation, len(collection), self.min_length, self.max_length)
+        # 优化
+        if self.item_validator.annotation is Any:
+            is_set = isinstance_safe(collection, self.annotation)
+            return collection if is_set else self.annotation(collection)
+        errs: List[ErrorDetail] = []
+        result: set = {
+            catch_validate_error(item, self.item_validator, [i], errs)
+            for i, item in enumerate(collection)
+        }
+        if errs:
+            raise ValidationError(title=self.name, line_errors=errs)
+        return result
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'SetValidator':
-        if type_parser.is_iterable(annotation):
-            raise ValueError(f"输入应为可迭代类型注解才可构建 {cls.__name__}")
-        return cls()
+        args = get_args(annotation)
+        sub_annotation = args[0] if args else Any
+        item_validator = matching_validator(sub_annotation, **get_sub_validator_kwargs(kwargs))
+        return cls(item_validator=item_validator, **kwargs)
+
+    @property
+    def name(self) -> str:
+        return f'{self.validator_name}[{self.item_validator.name}]'
 
 
-# TODO
 class FrozenValidator(Validator):
     """冻结集合验证器"""
 
     validator_name = 'frozenset'
     annotation = frozenset
+    item_validator: Validator
+    min_length: optional[int]
+    max_length: optional[int]
+
+    def __init__(self, item_validator: Validator, min_length: optional[int] = None, max_length: optional[int] = None,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.item_validator = item_validator
+        self.min_length = min_length
+        self.max_length = max_length
 
     def validate(self, value, **kwargs):
-        self.item_validator: Validator
+        collection = extract_collection(value, 'frozenset_type', '冻结集合')
+        # 检查长度
+        check_collection_length(self.annotation, len(collection), self.min_length, self.max_length)
+        # 优化
+        if self.item_validator.annotation is Any:
+            is_set = isinstance_safe(collection, self.annotation)
+            return collection if is_set else self.annotation(collection)
+        errs: List[ErrorDetail] = []
+        result: frozenset = frozenset({
+            catch_validate_error(item, self.item_validator, [i], errs)
+            for i, item in enumerate(collection)
+        })
+        if errs:
+            raise ValidationError(title=self.name, line_errors=errs)
+        return result
+
+    @classmethod
+    def build(cls, annotation: _T, **kwargs) -> 'FrozenValidator':
+        args = get_args(annotation)
+        sub_annotation = args[0] if args else Any
+        item_validator = matching_validator(sub_annotation, **get_sub_validator_kwargs(kwargs))
+        return cls(item_validator=item_validator, **kwargs)
+
+    @property
+    def name(self) -> str:
+        return f'{self.validator_name}[{self.item_validator.name}]'
 
 
 # TODO
@@ -715,8 +826,29 @@ class GeneratorValidator(Validator):
         return cls(item_validator=item_validator, **kwargs)
 
 
+class ArgumentValidatorParameter:
+    name: str
+    validator: Validator
+
+
 class ArgumentsValidator(Validator):
+    """参数验证器"""
+
     validator_name = 'arguments'
+    parameters: Dict[str, ArgumentValidatorParameter]
+    positional_params_count: int = 0
+    var_args_validator: optional[Validator]
+    var_kwargs_validator: optional[Validator]
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def validate(self, value, **kwargs):
+        pass
+
+    @classmethod
+    def build(cls, annotation: _T, **kwargs) -> 'ArgumentsValidator':
+        pass
 
 
 class FunctionValidator(Validator):
@@ -1052,63 +1184,85 @@ class DateValidator(Validator):
         return value.date()
 
 
+class IntEnumValidator(Validator):
+    """整型枚举验证器"""
+
+    validator_name = 'int_enum'
+    annotation = enum.IntEnum
+    enum_class: enum.EnumType
+    values: list
+
+    def __init__(self, enum_class: enum.EnumType, **kwargs):
+        super().__init__(**kwargs)
+        self.enum_class = enum_class
+        self.values = [i.value for i in self.enum_class]
+
+    def validate(self, value, **kwargs):
+        if isinstance_safe(value, self.annotation):
+            return value
+        try:
+            return self.enum_class(int(value))
+        except (ValueError, TypeError):
+            raise DataclassCustomError('int_enum_parsing', f'输入应为 {self.should_input_texts}')
+
+    @property
+    def name(self) -> str:
+        return f"{self.validator_name}[{_format_type(self.enum_class)}]"
+
+    @property
+    def should_input_texts(self) -> str:
+        return f'{",".join([f"`{value}`" for value in self.values])}'
+
+    @classmethod
+    def build(cls, annotation: _T, **kwargs) -> 'IntEnumValidator':
+        if not issubclass_safe(annotation, enum.IntEnum):
+            raise DataclassCustomError('building_error', '输入应为IntEnum类型才可构建验证器')
+        return cls(annotation, **kwargs)
+
+
 class EnumValidator(Validator):
     """枚举验证器"""
 
     validator_name = 'enum'
     annotation = enum.Enum
+    enum_class: enum.EnumType
+    use_value: bool
 
-    def __init__(self, target_enum: optional[enum.Enum] = None, use_value: bool = True, **kwargs):
+    def __init__(self, enum_class: enum.EnumType, use_value: bool = True, **kwargs):
         super().__init__(**kwargs)
-        self.target_enum: optional[enum.Enum] = target_enum
+        self.enum_class = enum_class
         self.use_value = use_value
-        self.names = []
-        self.values = []
-        self.update_validator()
+        self.values = [i.value if self.use_value else i.name for i in self.enum_class]
 
     def validate(self, value, **kwargs):
+        if isinstance_safe(value, self.enum_class):
+            return value
+        # 很优的方案，intEnum传递为str时也正确转换
         try:
-            if self.target_enum is None and issubclass_safe(value, self.annotation):
-                return value
-            elif self.target_enum and isinstance_safe(value, self.target_enum):
-                return value
-            elif self.target_enum and isinstance_safe(value, IntegerValidator.annotation):
-                return self.int_to_enum(value)
-            maybe_str = StringValidator.maybe_str(value, raise_error=False)
-            if self.target_enum and maybe_str:
-                return self.str_to_enum(maybe_str)
-        except (Exception,):
-            self.raise_error()
-        self.raise_error()
+            if not self.use_value:
+                maybe_str = StringValidator.maybe_str(value, raise_error=False)
+                return self.enum_class[maybe_str]
+            try:
+                return self.enum_class(value)
+            except ValueError:
+                return self.enum_class(int(value))
+        except (KeyError, ValueError, TypeError):
+            pass
+        raise DataclassCustomError('enum_parsing', f'输入应为 {self.should_input_texts}')
 
-    def update_validator(self):
-        self.name = f'enum[{str(self.target_enum)}]' if self.target_enum is not None else 'enum'
-        if self.target_enum:
-            for item in self.target_enum:
-                self.names.append(item.name)
-                self.values.append(item.value)
-
-    def int_to_enum(self, value: int):
-        return self.target_enum(value)
-
-    def str_to_enum(self, value: str):
-        if self.use_value:
-            return self.target_enum(value)
-        return self.target_enum[value]
+    @classmethod
+    def build(cls, annotation: _T, **kwargs) -> 'EnumValidator':
+        if not issubclass_safe(annotation, enum.Enum):
+            raise DataclassCustomError('building_error', '输入应为枚举类型才可构建验证器')
+        return cls(annotation, **kwargs)
 
     @property
-    def exact_values(self):
-        return self.values if self.use_value else self.names
+    def name(self) -> str:
+        return f'{self.validator_name}[{_format_type(self.enum_class)}]'
 
     @property
-    def exact_text(self):
-        return f'{",".join([f"`{value}`" for value in self.exact_values])}'
-
-    def raise_error(self) -> NoReturn:
-        if self.target_enum:
-            raise ValueError(f'输入应为 {self.exact_text}')
-        else:
-            raise ValueError('输入应为枚举类型')
+    def should_input_texts(self) -> str:
+        return f'{",".join([f"`{value}`" for value in self.values])}'
 
 
 # class DequeValidator(Validator):
@@ -1188,12 +1342,16 @@ class UuidValidator(Validator):
 def matching_validator(annotation: _T, **kwargs):
     """匹配验证器"""
     origin_annotation = type_parser.get_origin_safe(annotation) or annotation
-    # 特殊注解
-    if getattr(annotation, '_name', None) == 'Optional':
-        return OptionalValidator.build(annotation, **kwargs)
     try:
         return MATCH_VALIDATOR[origin_annotation].build(annotation, **kwargs)
     except KeyError:
+        # 特殊注解
+        if getattr(annotation, '_name', None) == 'Optional':
+            return OptionalValidator.build(annotation, **kwargs)
+        elif issubclass_safe(annotation, enum.IntEnum):
+            return IntEnumValidator.build(annotation, **kwargs)
+        elif issubclass_safe(annotation, enum.Enum):
+            return EnumValidator.build(annotation, **kwargs)
         return TargetInstanceValidator.build(annotation, **kwargs)
 
 
@@ -1238,6 +1396,29 @@ def catch_validate_error(
         errs.append(error)
 
 
+def check_collection_length(annotation, length: int, min_length: int, max_length: int):
+    """检查集合长度"""
+    annotation_texts = {
+        list: '列表',
+        tuple: '元祖',
+        dict: '字典',
+        set: '集合',
+        frozenset: '冻结集合',
+        Collection: '集合'
+    }
+    annotation_text = annotation_texts.get(annotation, '集合')
+    if min_length is not None and length < min_length:
+        raise DataclassCustomError(
+            'iter_too_short',
+            f'{annotation_text}最小应包含{min_length}项，而不是{length}项'
+        )
+    elif max_length is not None and length > max_length:
+        raise DataclassCustomError(
+            'iter_too_long',
+            f'{annotation_text}最多应包含{max_length}项，而不是{length}项'
+        )
+
+
 def extract_collection(v, exception_type: str = 'collection_type', type_text: str = '集合'):
     """尝试将其作为一个可迭代可获取长度的东西，但排除字符串和映射类型"""
     if isinstance_safe(v, (list, tuple, set, frozenset)):
@@ -1259,7 +1440,6 @@ BASE_VALIDATORS = {
     datetime.date: DateValidator(),
     datetime.time: TimeValidator(),
     datetime.timedelta: TimedeltaValidator(),
-    enum.Enum: EnumValidator(),
     uuid.UUID: UuidValidator(),
 }
 
@@ -1276,24 +1456,30 @@ MATCH_VALIDATOR = {
     datetime.time: TimeValidator,
     datetime.timedelta: TimedeltaValidator,
     enum.Enum: EnumValidator,
+    enum.StrEnum: EnumValidator,
+    enum.IntEnum: IntEnumValidator,
     uuid.UUID: UuidValidator,
-    Iterable: IterableValidator,
+    # Iterable: IterableValidator,
     Collection: ListValidator,
+    collections.abc.Collection: ListValidator,
     Sequence: ListValidator,
+    collections.abc.Sequence: ListValidator,
     list: ListValidator,
     List: ListValidator,
     tuple: TupleValidator,
     Tuple: TupleValidator,
     set: SetValidator,
     Set: SetValidator,
+    collections.abc.Set: SetValidator,
     frozenset: FrozenValidator,
+    FrozenSet: FrozenValidator,
+    collections.abc.Mapping: DictValidator,
     dict: DictValidator,
     Dict: DictValidator,
-    collections.deque: DequeValidator,
-    Deque: DequeValidator,
+    # collections.deque: DequeValidator,
+    # Deque: DequeValidator,
     Literal: LiteralValidator,
     Optional: OptionalValidator,
-    # NoneType: OptionalValidator,
     Union: UnionValidator,
     Generator: GeneratorValidator,
 }
