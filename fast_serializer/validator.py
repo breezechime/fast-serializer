@@ -12,7 +12,7 @@ from decimal import Decimal
 from types import FunctionType
 from typing import (
     Any, Generator, Union, Collection, Iterable, Literal, List, get_args, Tuple, Set, Dict, Optional,
-    Sequence, Mapping, Callable, TypedDict, FrozenSet, Type
+    Sequence, Mapping, Callable, TypedDict, FrozenSet, Type, Deque
 )
 from .constants import _T
 from .exceptions import DataclassCustomError, ErrorDetail, ValidationError, ValidatorBuildingError
@@ -819,6 +819,51 @@ class FrozenValidator(Validator):
         return f'{self.validator_name}[{self.item_validator.name}]'
 
 
+class DequeValidator(Validator):
+    """队列验证器"""
+
+    validator_name = 'deque'
+    annotation = collections.deque
+    item_validator: Validator
+    min_length: optional[int]
+    max_length: optional[int]
+
+    def __init__(self, item_validator: Validator, min_length: optional[int] = None, max_length: optional[int] = None,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.item_validator = item_validator
+        self.min_length = min_length
+        self.max_length = max_length
+
+    def validate(self, value, **kwargs) -> collections.deque:
+        collection = extract_collection(value, 'deque_type', '队列')
+        # 检查长度
+        check_collection_length(self.annotation, len(collection), self.min_length, self.max_length)
+        # 优化
+        if self.item_validator.annotation is Any:
+            is_deque = isinstance_safe(collection, self.annotation)
+            return collection if is_deque else self.annotation(collection)
+        errs: List[ErrorDetail] = []
+        result: collections.deque = collections.deque((
+            catch_validate_error(item, self.item_validator, [i], errs)
+            for i, item in enumerate(collection)
+        ))
+        if errs:
+            raise ValidationError(title=self.name, line_errors=errs)
+        return result
+
+    @classmethod
+    def build(cls, annotation: _T, **kwargs) -> 'DequeValidator':
+        args = get_args(annotation)
+        item_validator = matching_validator(args[0], **get_sub_validator_kwargs(kwargs)) \
+            if args else BASE_VALIDATORS[Any]
+        return cls(item_validator=item_validator, **kwargs)
+
+    @property
+    def name(self) -> str:
+        return f'{self.validator_name}[{self.item_validator.name}]'
+
+
 class GeneratorValidator(Validator):
     """生成器验证器"""
 
@@ -1337,43 +1382,6 @@ class EnumValidator(Validator):
         return f'{",".join([f"`{value}`" for value in self.values])}'
 
 
-# class DequeValidator(Validator):
-#     """队列验证器"""
-#
-#     name = 'deque'
-#     annotation = collections.deque
-#     item_validator: Validator
-#
-#     def __init__(self, item_validator: optional[Validator] = None, **kwargs):
-#         super().__init__(**kwargs)
-#         self.item_validator = item_validator or BASE_VALIDATORS[Any]
-#         self.update_validator()
-#
-#     def validate(self, value, **kwargs) -> collections.deque:
-#         if not type_parser.is_collection(value):
-#             raise ValueError('输入应为可迭代类型')
-#         new_deque = self.annotation()
-#         # 开始验证内部
-#         [new_deque.append(self.item_validator.validate(item)) for item in value]
-#         return new_deque
-#
-#     @classmethod
-#     def build(cls, annotation: _T, **kwargs) -> 'DequeValidator':
-#         if not type_parser.is_collection(annotation):
-#             raise ValueError(f"输入应为集合类型注解才可构建 {cls.__name__}")
-#         args = get_args(annotation)
-#         item_validator = matching_validator(args[0]) if args else None
-#         validator = cls(item_validator)
-#         return validator
-#
-#     def __repr__(self):
-#         return (f"{self.__class__.__name__}(\n\tname: {self.name},\n\tannotation: "
-#                 f"{self.annotation},\n\titem_validator: {self.item_validator}\n)")
-#
-#     def update_validator(self):
-#         self.name = f'deque[{self.item_validator.name}]'
-
-
 class UuidValidator(Validator):
     """UUID类型验证器"""
 
@@ -1478,7 +1486,8 @@ def check_collection_length(annotation, length: int, min_length: int, max_length
         frozenset: '冻结集合',
         Collection: '集合',
         Iterable: '可迭代',
-        Generator: '生成器'
+        Generator: '生成器',
+        collections.deque: '队列'
     }
     annotation_text = annotation_texts.get(annotation, '集合')
     if min_length is not None and length < min_length:
@@ -1549,8 +1558,8 @@ MATCH_VALIDATOR = {
     collections.abc.Mapping: DictValidator,
     dict: DictValidator,
     Dict: DictValidator,
-    # collections.deque: DequeValidator,
-    # Deque: DequeValidator,
+    collections.deque: DequeValidator,
+    Deque: DequeValidator,
     Literal: LiteralValidator,
     Optional: OptionalValidator,
     Union: UnionValidator,
