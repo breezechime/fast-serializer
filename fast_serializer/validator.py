@@ -12,7 +12,7 @@ from decimal import Decimal
 from types import FunctionType
 from typing import (
     Any, Generator, Union, Collection, Iterable, Literal, List, get_args, Tuple, Set, Dict, Optional,
-    Sequence, Mapping, Callable, TypedDict, FrozenSet
+    Sequence, Mapping, Callable, TypedDict, FrozenSet, Type
 )
 from .constants import _T
 from .exceptions import DataclassCustomError, ErrorDetail, ValidationError, ValidatorBuildingError
@@ -232,10 +232,10 @@ class BytesValidator(Validator):
         raise ValueError('输入应为有效字节类型')
 
 
-class TargetInstanceValidator(Validator):
+class IsInstanceValidator(Validator):
     """目标实例验证器"""
 
-    validator_name = 'target_instance'
+    validator_name = 'is_instance'
 
     def __init__(self, annotation: _T, **kwargs):
         super().__init__(**kwargs)
@@ -244,11 +244,35 @@ class TargetInstanceValidator(Validator):
     def validate(self, value, **kwargs):
         if isinstance_safe(value, self.annotation):
             return value
-        raise ValueError(f'输入应为`{self.name}`实例')
+        raise ValueError(f'输入应为`{_format_type(self.annotation)}`实例')
 
     @property
     def name(self) -> str:
-        return _format_type(self.annotation)
+        return f"{self.validator_name}[{_format_type(self.annotation)}]"
+
+
+class IsSubClassValidator(Validator):
+    """目标类或子类验证器"""
+
+    validator_name = 'is_subclass'
+
+    def __init__(self, annotation: _T, **kwargs):
+        super().__init__(**kwargs)
+        self.annotation = annotation
+
+    def validate(self, value, **kwargs):
+        if issubclass_safe(value, self.annotation):
+            return value
+        raise DataclassCustomError('is_subclass', f'输入应该是`{_format_type(self.annotation)}`的子类')
+
+    @property
+    def name(self) -> str:
+        return f"{self.validator_name}[{_format_type(self.annotation)}]"
+
+    @classmethod
+    def build(cls, annotation: _T, **kwargs) -> 'IsSubClassValidator':
+        args = get_args(annotation)
+        return cls(annotation=args[0], **kwargs)
 
 
 class OptionalValidator(Validator):
@@ -795,7 +819,6 @@ class FrozenValidator(Validator):
         return f'{self.validator_name}[{self.item_validator.name}]'
 
 
-# TODO
 class GeneratorValidator(Validator):
     """生成器验证器"""
 
@@ -813,10 +836,19 @@ class GeneratorValidator(Validator):
         self.max_length = max_length
 
     def validate(self, value, **kwargs):
-        is_iterable = isinstance_safe(value, Iterable)
-        if not is_iterable:
+        if not isinstance_safe(value, Iterable):
             raise DataclassCustomError('iterable_type', '输入应为可迭代类型')
-        return value
+        iterator = GeneratorIterator(
+            iterable=(v for v in value),
+            validator=self.item_validator,
+            min_length=self.min_length,
+            max_length=self.max_length,
+        )
+        return iterator
+
+    @property
+    def name(self) -> str:
+        return f"{self.validator_name}[{_format_type(self.item_validator.name)}]"
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'GeneratorValidator':
@@ -824,6 +856,46 @@ class GeneratorValidator(Validator):
         sub_annotation = args[0] if args else Any
         item_validator = matching_validator(sub_annotation, **get_sub_validator_kwargs(kwargs))
         return cls(item_validator=item_validator, **kwargs)
+
+
+class GeneratorIterator:
+    """生成器迭代器，包含验证"""
+    iterable: Generator
+    validator: Validator
+    min_length: optional[int]
+    max_length: optional[int]
+    index: int
+
+    def __init__(self, iterable: Generator, validator: Validator, min_length: optional[int] = None,
+                 max_length: optional[int] = None):
+        self.iterable = iterable
+        self.validator = validator
+        self.min_length = min_length
+        self.max_length = max_length
+        self.index = 0
+
+    def __iter__(self):
+        return self.iterable
+
+    def __next__(self):
+        value = next(self.iterable)
+        errs: List[ErrorDetail] = []
+        value = catch_validate_error(value, self.validator, [self.index], errs)
+        # 检查长度
+        try:
+            check_collection_length(Generator, self.index + 1, self.min_length, self.max_length)
+        except DataclassCustomError as e:
+            errs.append(ErrorDetail([self.index], value, e.exception_type, e.msg))
+        if errs:
+            raise ValidationError(title=self.__class__.__name__, line_errors=errs)
+        self.index += 1
+        return value
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(index={self.index}, validator={self.validator.name})"
+
+    def __str__(self):
+        return self.__repr__()
 
 
 class ArgumentValidatorParameter:
@@ -1352,7 +1424,7 @@ def matching_validator(annotation: _T, **kwargs):
             return IntEnumValidator.build(annotation, **kwargs)
         elif issubclass_safe(annotation, enum.Enum):
             return EnumValidator.build(annotation, **kwargs)
-        return TargetInstanceValidator.build(annotation, **kwargs)
+        return IsInstanceValidator.build(annotation, **kwargs)
 
 
 def catch_validate_error(
@@ -1404,7 +1476,9 @@ def check_collection_length(annotation, length: int, min_length: int, max_length
         dict: '字典',
         set: '集合',
         frozenset: '冻结集合',
-        Collection: '集合'
+        Collection: '集合',
+        Iterable: '可迭代',
+        Generator: '生成器'
     }
     annotation_text = annotation_texts.get(annotation, '集合')
     if min_length is not None and length < min_length:
@@ -1459,7 +1533,6 @@ MATCH_VALIDATOR = {
     enum.StrEnum: EnumValidator,
     enum.IntEnum: IntEnumValidator,
     uuid.UUID: UuidValidator,
-    # Iterable: IterableValidator,
     Collection: ListValidator,
     collections.abc.Collection: ListValidator,
     Sequence: ListValidator,
@@ -1481,5 +1554,10 @@ MATCH_VALIDATOR = {
     Literal: LiteralValidator,
     Optional: OptionalValidator,
     Union: UnionValidator,
+    Iterable: GeneratorValidator,
+    collections.abc.Iterable: GeneratorValidator,
     Generator: GeneratorValidator,
+    collections.abc.Generator: GeneratorValidator,
+    Type: IsSubClassValidator,
+    type: IsSubClassValidator,
 }
