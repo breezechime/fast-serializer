@@ -517,7 +517,6 @@ class TypedDictField:
         return f"{self.__class__.__name__}(name={self.name}, required={self.required}, validator={self.validator})"
 
 
-# TODO
 class TypedDictValidator(Validator):
     """带类型字典验证器"""
 
@@ -904,6 +903,8 @@ class GeneratorIterator:
 
 
 class ArgumentValidatorParameter:
+    """参数验证器参数"""
+
     name: str
     validator: Validator
 
@@ -934,57 +935,65 @@ class FunctionValidator(Validator):
     validator_name = 'function'
     annotation = FunctionType
     """参数验证器列表"""
-    argument_validators: Dict[str, Validator]
+    argument_validator: Validator
+    function: FunctionType
 
-    def __init__(self, argument_validators: Dict[str, Validator], function: FunctionType, **kwargs):
+    def __init__(self, argument_validator: Validator, function: FunctionType, **kwargs):
         super().__init__(**kwargs)
-        self.argument_validators = argument_validators
+        self.argument_validator = argument_validator
         self.function = function
 
     def validate(self, value, **kwargs):
         is_dict = isinstance(value, dict)
         if not isinstance_safe(value, (tuple, list)) and not is_dict:
             raise DataclassCustomError('arguments_type', '参数必须是元组、列表或字典')
-        parameters = inspect.signature(self.function).parameters
-        errors: List[ErrorDetail] = []
-        input_values: dict = dict()
-        for i, arg_name in enumerate(self.argument_validators):
-            try:
-                arg_value = value[arg_name] if is_dict else value[i]
-            except (IndexError, KeyError):
-                error = ErrorDetail(
-                    loc=[arg_name],
-                    input_value=value,
-                    exception_type='missing',
-                    msg='为必填项',
-                )
-                errors.append(error)
-                continue
-            validator = self.argument_validators[arg_name]
-            input_values[arg_name] = catch_validate_error(arg_value, validator, [arg_name], errors)
+        # parameters = inspect.signature(self.function).parameters
+        # errors: List[ErrorDetail] = []
+        # input_values: dict = dict()
+        # for i, arg_name in enumerate(self.argument_validators):
+        #     try:
+        #         arg_value = value[arg_name] if is_dict else value[i]
+        #     except (IndexError, KeyError):
+        #         error = ErrorDetail(
+        #             loc=[arg_name],
+        #             input_value=value,
+        #             exception_type='missing',
+        #             msg='为必填项',
+        #         )
+        #         errors.append(error)
+        #         continue
+        #     validator = self.argument_validators[arg_name]
+        #     input_values[arg_name] = catch_validate_error(arg_value, validator, [arg_name], errors)
+        #
+        # if errors:
+        #     raise ValidationError(title=self.name, line_errors=errors)
+        # return self.function(**input_values)
 
-        if errors:
-            raise ValidationError(title=self.name, line_errors=errors)
-        return self.function(**input_values)
+    def __repr__(self):
+        return (f"{self.__class__.__name__}(\n  "
+                f"name: {self.name!r},\n  "
+                f"function: {self.function}\n  "
+                f"argument_validator: {self.argument_validator}"
+                f")")
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'FunctionValidator':
         is_function = type_parser.is_function(annotation)
         if not is_function:
             raise DataclassCustomError('func_building', '输入应为函数才可构建函数验证器')
-        parameters = inspect.signature(annotation).parameters
-        function_annos = {}
-        for k, param in parameters.items():
-            # 排除 *args, **kwargs，并且将可以不传的参数组合成OptionalValidator
-            if param.kind in [inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD]:
-                continue
-            param_anno = param.annotation if param.default == inspect.Parameter.empty \
-                else Optional[param.annotation]
-            function_annos[k] = param_anno
-
-        argument_validators = {k: matching_validator(function_annos[k], **get_sub_validator_kwargs(kwargs, i))
-                               for i, k in enumerate(function_annos)}
-        return cls(argument_validators=argument_validators, function=annotation, **kwargs)
+        # parameters = inspect.signature(annotation).parameters
+        # function_annos = {}
+        # for k, param in parameters.items():
+        #     # 排除 *args, **kwargs，并且将可以不传的参数组合成OptionalValidator
+        #     if param.kind in [inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD]:
+        #         continue
+        #     param_anno = param.annotation if param.default == inspect.Parameter.empty \
+        #         else Optional[param.annotation]
+        #     function_annos[k] = param_anno
+        #
+        # argument_validators = {k: matching_validator(function_annos[k], **get_sub_validator_kwargs(kwargs, i))
+        #                        for i, k in enumerate(function_annos)}
+        return cls(argument_validator=BASE_VALIDATORS[Any], function=annotation, **kwargs)
 
 
 class CallableValidator(Validator):
