@@ -29,14 +29,16 @@ def test(v: str):
     print(v)
 
 
+val = FunctionValidator.build(test)
+print(val.validate('asd'))
 # print(HaHa())
 # TypedDictValidator.build(HaHa)
 # print(Union[str])
 # print(dir(HaHa))
 # print(is_typeddict(HaHa))
 # print(Test.dataclass_fields['arr'])
-a = Test(arr={'name': 'asd'})
-print(a.arr)
+# a = Test(arr={'name': 'asd'})
+# print(a.arr)
 # print(next(a.arr))
 # print(type(a.arr))
 # val = TupleValidator.build(tuple[str, int])
