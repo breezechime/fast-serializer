@@ -7,3 +7,5 @@
 out
 gen
 build
+test.py
+pydantic_example.py
