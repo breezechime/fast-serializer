@@ -25,12 +25,12 @@ class Test(FastDataclass):
     arr: HaHa
 
 
-def test(v: str):
+def test(v: str, *args):
     print(v)
 
 
 val = FunctionValidator.build(test)
-print(val.validate('asd'))
+print(val.validate([1]))
 # print(HaHa())
 # TypedDictValidator.build(HaHa)
 # print(Union[str])
