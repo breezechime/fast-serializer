@@ -2,7 +2,7 @@
 import re
 import types
 from types import MappingProxyType
-from typing import TypeVar
+from typing import TypeVar, Any
 
 """用于类型标注 Used for type annotation"""
 _T = TypeVar('_T')
@@ -19,6 +19,16 @@ class DefaultFactory:
 
 _DEFAULT_FACTORY = DefaultFactory()
 
+
+class ArgsKwargs:
+
+    def __init__(self, args: tuple[Any, ...], kwargs: dict[str, Any] | None = None):
+        if not isinstance(args, (tuple, list)):
+            raise TypeError("参数 'args' 输入应为元祖或列表")
+        self.args = args
+        if kwargs is not None and not isinstance(kwargs, dict):
+            raise TypeError("参数 'kwargs' 输入应为字典类型")
+        self.kwargs = kwargs or {}
 
 # class Unset:
 #     """A sentinel object to detect if a parameter is supplied or not.  Use a class to give it a better repr."""

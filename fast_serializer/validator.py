@@ -6,7 +6,6 @@ import enum
 import inspect
 import re
 import time
-import typing_extensions
 import uuid
 from abc import ABC, abstractmethod
 from decimal import Decimal
@@ -15,7 +14,7 @@ from typing import (
     Any, Generator, Union, Collection, Iterable, Literal, List, get_args, Tuple, Set, Dict, Optional,
     Sequence, Mapping, Callable, TypedDict, FrozenSet, Type, Deque, is_typeddict
 )
-from .constants import _T
+from .constants import _T, ArgsKwargs
 from .exceptions import DataclassCustomError, ErrorDetail, ValidationError, ValidatorBuildingError
 from .type_parser import type_parser
 from .types import optional
@@ -294,7 +293,7 @@ class OptionalValidator(Validator):
 
     @classmethod
     def build(cls, annotation: _T, **kwargs):
-        if not type_parser.is_optional(annotation):
+        if not type_parser.is_optional(annotation) or annotation == Any:
             annotation = Optional[annotation]
         validator = matching_validator(get_args(annotation)[0], **kwargs)
         return cls(validator=validator, **kwargs)
@@ -902,31 +901,24 @@ class GeneratorIterator:
         return self.__repr__()
 
 
-class ArgumentValidatorParameter:
-    """参数验证器参数"""
-
-    name: str
-    validator: Validator
-
-
-class ArgumentsValidator(Validator):
+class ParameterValidator:
     """参数验证器"""
 
-    validator_name = 'arguments'
-    parameters: Dict[str, ArgumentValidatorParameter]
-    positional_params_count: int = 0
-    var_args_validator: optional[Validator]
-    var_kwargs_validator: optional[Validator]
+    name: str
+    kind: Any
+    default: Any
+    validator: Validator
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    __slots__ = ('name', 'kind', 'default', 'validator')
 
-    def validate(self, value):
-        pass
+    def __init__(self, name: str, kind: Any, default: Any, validator: Validator):
+        self.name = name
+        self.kind = kind
+        self.default = default
+        self.validator = validator
 
-    @classmethod
-    def build(cls, annotation: _T, **kwargs) -> 'ArgumentsValidator':
-        pass
+    def __repr__(self):
+        return f"{self.__class__.__name__}(name={self.name}, kind={self.kind}, default={self.default!r})"
 
 
 class FunctionValidator(Validator):
@@ -935,70 +927,155 @@ class FunctionValidator(Validator):
     validator_name = 'function'
     annotation = FunctionType
     """参数验证器列表"""
-    argument_validator: Validator
+    parameters: Dict[str, ParameterValidator]
+    positional_params_count: int = 0
+    var_positional_validator: optional[Validator]
+    var_kwargs_validator: optional[Validator]
     function: FunctionType
 
-    def __init__(self, function: FunctionType, **kwargs):
+    def __init__(self, parameters: Dict[str, ParameterValidator], function: FunctionType,
+                 positional_params_count: int = 0, var_positional_validator: optional[Validator] = None,
+                 var_kwargs_validator: optional[Validator] = None, **kwargs):
         super().__init__(**kwargs)
+        self.parameters = parameters
         # self.argument_validator = argument_validator
         self.function = function
+        self.positional_params_count = positional_params_count
+        self.var_positional_validator = var_positional_validator
+        self.var_kwargs_validator = var_kwargs_validator
 
     def validate(self, value):
-        is_dict = isinstance(value, dict)
-        if not isinstance_safe(value, (tuple, list)) and not is_dict:
+        is_dict = isinstance_safe(value, dict)
+        is_args_kwargs = isinstance_safe(value, ArgsKwargs)
+        if not isinstance_safe(value, (tuple, list)) and not is_dict and not is_args_kwargs:
             raise DataclassCustomError('arguments_type', '参数必须是元组、列表或字典')
-        parameters = inspect.signature(self.function).parameters
+        if is_dict:
+            args = None
+            kwargs = value
+        elif is_args_kwargs:
+            args = value.args
+            kwargs = value.kwargs
+        else:
+            args = value
+            kwargs = None
+        validated_args = []
+        validated_kwargs = dict()
+        used_kwargs = set()
         errs: List[ErrorDetail] = []
-        for index, param_name in enumerate(parameters):
-            parameter = parameters[param_name]
+
+        # 循环所有参数
+        for index, param_name in enumerate(self.parameters):
+            parameter = self.parameters[param_name]
+            err = None
+            pos_value = None
+            kwargs_value = None
             try:
-                if is_dict:
-                    input_value = value[param_name]
-                else:
-                    input_value = value[index]
-            except KeyError:
-                err = ErrorDetail(
-                    [param_name],
-                    value,
-                    'missing',
-                    '字段不能为空'
-                )
-                errs.append(err)
-                continue
+                if args is not None:
+                    if parameter.kind in [inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.POSITIONAL_ONLY]:
+                        pos_value = args[index]
+                if kwargs is not None:
+                    kwargs_value = kwargs[parameter.name]
+                    used_kwargs.add(parameter.name)
             except IndexError:
-                err = ErrorDetail(
-                    [index],
-                    value,
-                    'missing',
-                    '字段不能为空'
-                )
+                err = ErrorDetail([index], value, 'missing', '字段不能为空')
+                # errs.append(ErrorDetail([index], value, 'missing', '字段不能为空'))
+                # continue
+            except KeyError:
+                err = ErrorDetail([param_name], value, 'missing', '字段不能为空')
+                # errs.append(ErrorDetail([param_name], value, 'missing', '字段不能为空'))
+                # continue
+
+            # multiple check
+            if pos_value is not None and kwargs_value is not None:
+                err = ErrorDetail([param_name], kwargs_value, 'multiple_arg', '得到了多个参数值')
                 errs.append(err)
                 continue
-            if input_value is None and parameter.default == inspect.Parameter.empty:
-                err = ErrorDetail(
-                    [param_name],
-                    value,
-                    'missing',
-                    '字段不能为空'
-                )
-                errs.append(err)
+            elif pos_value is not None:
+                pos_value = catch_validate_error(pos_value, parameter.validator, [index], errs)
+                validated_args.append(pos_value)
+            elif kwargs_value is not None and parameter.kind != inspect.Parameter.POSITIONAL_ONLY:
+                kwargs_value = catch_validate_error(kwargs_value, parameter.validator, [param_name], errs)
+                validated_kwargs[param_name] = kwargs_value
+            elif parameter.default == inspect.Parameter.empty:
+                if parameter.kind == inspect.Parameter.VAR_POSITIONAL:
+                    if args:
+                        # 验证*args参数
+                        var_args: list = [catch_validate_error(arg_value, self.var_positional_validator, [index], errs)
+                                          for index, arg_value in enumerate(args[index:])]
+                        validated_args.extend(var_args)
+                elif parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                    if kwargs:
+                        # 验证**kwargs参数
+                        var_kwargs: dict = {k: catch_validate_error(v, self.var_kwargs_validator, [k], errs)
+                                            for k, v in kwargs.items() if k not in used_kwargs}
+                        validated_kwargs.update(var_kwargs)
+                elif parameter.kind == inspect.Parameter.KEYWORD_ONLY:
+                    errs.append(ErrorDetail(
+                        [param_name],
+                        value,
+                        'missing_keyword_only',
+                        '缺少必需的仅限关键字的参数'
+                    ))
+                elif parameter.kind == inspect.Parameter.POSITIONAL_ONLY:
+                    errs.append(ErrorDetail(
+                        [param_name],
+                        value,
+                        'missing_positional_only',
+                        '缺少必需的仅位置参数'
+                    ))
+                elif err:
+                    errs.append(err)
                 continue
+
+        # 如果有args，请检查任意where index>positionalparams_count，因为它们还没有被检查过
+        if args and self.var_positional_validator is None:
+            length = len(args)
+            if length > self.positional_params_count:
+                for index, args_value in enumerate(args):
+                    if index < self.positional_params_count:
+                        continue
+                    errs.append(ErrorDetail(
+                        [index],
+                        args_value,
+                        'unexpected_positional_arg',
+                        '意外的位置参数'
+                    ))
+        # 有kwargs，请检查任何尚未处理的
+        if kwargs and self.var_kwargs_validator is None:
+            length = len(kwargs)
+            if length > len(used_kwargs):
+                for k, v in kwargs.items():
+                    if k in used_kwargs:
+                        continue
+                    errs.append(ErrorDetail([k], v, 'unexpected_keyword_arg', '意外的关键字参数'))
+
         if errs:
             raise ValidationError(title=self.name, line_errors=errs)
-
-    def __repr__(self):
-        return (f"{self.__class__.__name__}(\n  "
-                f"name: {self.name!r},\n  "
-                f"function: {self.function}\n  "
-                f"argument_validator: {self.argument_validator}"
-                f")")
+        return self.function(*validated_args, **validated_kwargs)
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'FunctionValidator':
         is_function = type_parser.is_function(annotation)
         if not is_function:
             raise DataclassCustomError('func_building', '输入应为函数才可构建函数验证器')
-        return cls(function=annotation, **kwargs)
+        func_parameters = inspect.signature(annotation).parameters
+        parameters: Dict[str, ParameterValidator] = dict()
+        positional_params_count = 0
+        var_positional_validator = None
+        var_kwargs_validator = None
+        for index, parameter_name in enumerate(func_parameters):
+            parameter = func_parameters[parameter_name]
+            param_anno = parameter.annotation if parameter.annotation != inspect.Parameter.empty else Any
+            validator = matching_validator(param_anno, **get_sub_validator_kwargs(kwargs, index))
+            parameters[parameter_name] = ParameterValidator(parameter.name, parameter.kind, parameter.default, validator)
+            if parameter.kind in [inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.POSITIONAL_ONLY]:
+                positional_params_count += 1
+            if parameter.kind == inspect.Parameter.VAR_POSITIONAL:
+                var_positional_validator = validator
+            elif parameter.kind == inspect.Parameter.VAR_KEYWORD:
+                var_kwargs_validator = validator
+        return cls(parameters=parameters, function=annotation, positional_params_count=positional_params_count,
+                   var_positional_validator=var_positional_validator, var_kwargs_validator=var_kwargs_validator, **kwargs)
 
 
 class CallableValidator(Validator):
@@ -1397,7 +1474,7 @@ def matching_validator(annotation: _T, **kwargs):
     """匹配验证器"""
     origin_annotation = type_parser.get_origin_safe(annotation) or annotation
     # Optional原型为Union不放在上面会变成Union验证器
-    if type_parser.is_optional(annotation):
+    if type_parser.is_optional(annotation) and annotation != Any:
         return OptionalValidator.build(annotation, **kwargs)
     try:
         return MATCH_VALIDATOR[origin_annotation].build(annotation, **kwargs)
@@ -1412,6 +1489,7 @@ def matching_validator(annotation: _T, **kwargs):
             return MATCH_VALIDATOR[TypedDict].build(annotation, **kwargs)
         # typing_extensions
         try:
+            import typing_extensions
             if typing_extensions.is_typeddict(annotation):
                 return MATCH_VALIDATOR[TypedDict].build(annotation, **kwargs)
         except ImportError:

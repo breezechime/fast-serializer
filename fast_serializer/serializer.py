@@ -1,13 +1,10 @@
 # -*- coding:utf-8 -*-
-import enum
 from typing import Type, Dict, Any, Union, Tuple
 from .constants import _T, _DATACLASS_FIELDS_NAME, _POST_INIT_NAME
+from .exceptions import DataclassCustomError
 from .exceptions import ErrorDetail, ValidationError
 from .field import Field
-from .type_parser import type_parser
-from .utils import _format_type
-from .validator import Validator, EnumValidator, TupleValidator
-from .exceptions import DataclassCustomError
+from .validator import Validator
 
 
 class FastSerializer:

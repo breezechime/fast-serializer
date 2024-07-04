@@ -1,7 +1,10 @@
 import collections
 import enum
+import inspect
 import time
 import typing
+from inspect import _ParameterKind  # type: ignore
+
 import typing_extensions
 import uuid
 from typing import Callable, Union
@@ -21,16 +24,21 @@ class HaHa(TypedDict, total=False):
 
 
 class Test(FastDataclass):
-
     arr: HaHa
 
 
-def test(v: str, *args):
-    print(v)
+def test(v: int, *args: str, a: int):
+    pass
+    # print(kwargs)
+    # print(kwargs)
+    # print(args)
 
 
+# for k, param in inspect.signature(test).parameters.items():
+#     print(param.kind)
+#     print(type(param.kind))
 val = FunctionValidator.build(test)
-print(val.validate([1]))
+val.validate({'v': 123, 'a': 123, 'b': 123})
 # print(HaHa())
 # TypedDictValidator.build(HaHa)
 # print(Union[str])
