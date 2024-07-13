@@ -2,8 +2,19 @@
 import _thread
 import functools
 from typing import Union
+from .constants import _SUB_VALIDATOR_KWARGS_NAME, _SUB_SERIALIZER_KWARGS_NAME
 
-from .constants import _SUB_VALIDATOR_KWARGS_NAME
+
+def fast_dataclass_repr(fast_dataclass, join_str: str):
+    return join_str.join(repr(v) if a is None else f'{a}={v!r}' for a, v in fast_dataclass_repr_values(fast_dataclass))
+
+
+def fast_dataclass_repr_values(fast_dataclass):
+    for k, v in __dict__.items():
+        field = fast_dataclass.dataclass_fields.get(k)
+        if field and field.repr:
+            yield k, v
+
 
 
 def _recursive_repr(user_function):
@@ -27,7 +38,9 @@ def _recursive_repr(user_function):
 
 
 def _format_type(_type) -> str:
-    if hasattr(_type, "__name__"):
+    if isinstance_safe(_type, str):
+        return _type
+    elif hasattr(_type, "__name__"):
         return _type.__name__
     elif hasattr(_type, "__class__"):
         return _type.__class__.__name__
@@ -72,6 +85,21 @@ def get_sub_validator_kwargs(validator_kwargs: Union[dict, list], index: int = 0
             kwargs = sub_validator_kwargs[index]
             if index == len(sub_validator_kwargs) - 1:
                 validator_kwargs.pop(_SUB_VALIDATOR_KWARGS_NAME)
+            return kwargs
+    except (KeyError,):
+        return dict()
+
+
+def get_sub_serializer_kwargs(serializer_kwargs: Union[dict, list], index: int = 0) -> dict:
+    try:
+        sub_serializer_kwargs = serializer_kwargs[_SUB_SERIALIZER_KWARGS_NAME]
+        if isinstance(sub_serializer_kwargs, dict):
+            del serializer_kwargs[_SUB_SERIALIZER_KWARGS_NAME]
+            return sub_serializer_kwargs
+        else:
+            kwargs = sub_serializer_kwargs[index]
+            if index == len(sub_serializer_kwargs) - 1:
+                serializer_kwargs.pop(_SUB_SERIALIZER_KWARGS_NAME)
             return kwargs
     except (KeyError,):
         return dict()

@@ -318,7 +318,7 @@ class UnionValidator(Validator):
         err: optional[ErrorDetail] = None
         for validator in self.validators:
             errs: List[ErrorDetail] = []
-            v = catch_validate_error(value, validator, [], errs)
+            v = validate_iter_with_catch(value, validator, [], errs)
             if not errs:
                 return v
             err = errs[-1]
@@ -371,7 +371,7 @@ class LiteralValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f'{self.validator_name}[{",".join([f"{value!r}" for value in self.expected_values])}]'
+        return f'{self.validator_name}[{", ".join([f"{value!r}" for value in self.expected_values])}]'
 
     @property
     def format_expected_values(self):
@@ -480,22 +480,24 @@ class DictValidator(Validator):
         if key_validator_is_any:
             keys = value.keys()
         else:
-            keys = [catch_validate_error(v, self.key_validator, [i], errs) for i, v in enumerate(value.keys())]
+            keys = [validate_iter_with_catch(v, self.key_validator, [i], errs) for i, v in enumerate(value.keys())]
         # 验证values
         if value_validator_is_any:
             values = value.values()
         else:
-            values = [catch_validate_error(v, self.value_validator, [i], errs) for i, v in enumerate(value.values())]
+            values = [validate_iter_with_catch(v, self.value_validator, [i], errs) for i, v in enumerate(value.values())]
         res_dict = self.annotation(zip(keys, values))
         return res_dict
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'DictValidator':
-        _args = get_args(annotation)
-        _args_length = len(_args)
-        key_validator = matching_validator(_args[0], **kwargs) if _args_length >= 1 else BASE_VALIDATORS[Any]
-        value_validator = matching_validator(_args[1], **kwargs) if _args_length >= 2 else BASE_VALIDATORS[Any]
-        return cls(key_validator, value_validator, *_args, **kwargs)
+        annotation_args = get_args(annotation)
+        args_length = len(annotation_args)
+        key_validator = matching_validator(annotation_args[0], **get_sub_validator_kwargs(kwargs, 0)) if (
+                args_length >= 1) else BASE_VALIDATORS[Any]
+        value_validator = matching_validator(annotation_args[1], **get_sub_validator_kwargs(kwargs, 1)) if (
+                args_length >= 2) else BASE_VALIDATORS[Any]
+        return cls(key_validator, value_validator, **kwargs)
 
     @property
     def name(self) -> str:
@@ -551,7 +553,7 @@ class TypedDictValidator(Validator):
             )
             errs.append(err)
             return v
-        return catch_validate_error(v, field.validator, [field.name], errs)
+        return validate_iter_with_catch(v, field.validator, [field.name], errs)
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'TypedDictValidator':
@@ -594,7 +596,7 @@ class ListValidator(Validator):
             return collection if is_list else self.annotation(collection)
         errs: List[ErrorDetail] = []
         result: list = [
-            catch_validate_error(item, self.item_validator, [i], errs)
+            validate_iter_with_catch(item, self.item_validator, [i], errs)
             for i, item in enumerate(collection)
         ]
         if errs:
@@ -649,7 +651,7 @@ class TupleValidator(Validator):
             for i, val in enumerate(self.validators):
                 try:
                     v = collection[i]
-                    result.append(catch_validate_error(v, val, [i], errs))
+                    result.append(validate_iter_with_catch(v, val, [i], errs))
                 except IndexError:
                     errs.append(ErrorDetail([i], collection, 'missing', '字段为必填项'))
             if errs:
@@ -658,7 +660,7 @@ class TupleValidator(Validator):
         # 可变
         validator = self.validators[0]
         result: tuple = tuple(
-            catch_validate_error(item, validator, [i], errs)
+            validate_iter_with_catch(item, validator, [i], errs)
             for i, item in enumerate(collection)
         )
         if errs:
@@ -674,7 +676,8 @@ class TupleValidator(Validator):
             args.remove(Ellipsis)
         else:
             variadic = False
-        validators = [matching_validator(sub, **get_sub_validator_kwargs(kwargs, i)) for i, sub in enumerate(args)]
+        validators = [matching_validator(sub, **get_sub_validator_kwargs(kwargs, i))
+                      for i, sub in enumerate(args)]
         if not validators:
             validators = [BASE_VALIDATORS[Any]]
             variadic = True
@@ -713,7 +716,7 @@ class SetValidator(Validator):
             return collection if is_set else self.annotation(collection)
         errs: List[ErrorDetail] = []
         result: set = {
-            catch_validate_error(item, self.item_validator, [i], errs)
+            validate_iter_with_catch(item, self.item_validator, [i], errs)
             for i, item in enumerate(collection)
         }
         if errs:
@@ -758,7 +761,7 @@ class FrozenValidator(Validator):
             return collection if is_set else self.annotation(collection)
         errs: List[ErrorDetail] = []
         result: frozenset = frozenset({
-            catch_validate_error(item, self.item_validator, [i], errs)
+            validate_iter_with_catch(item, self.item_validator, [i], errs)
             for i, item in enumerate(collection)
         })
         if errs:
@@ -803,7 +806,7 @@ class DequeValidator(Validator):
             return collection if is_deque else self.annotation(collection)
         errs: List[ErrorDetail] = []
         result: collections.deque = collections.deque((
-            catch_validate_error(item, self.item_validator, [i], errs)
+            validate_iter_with_catch(item, self.item_validator, [i], errs)
             for i, item in enumerate(collection)
         ))
         if errs:
@@ -883,7 +886,7 @@ class GeneratorIterator:
     def __next__(self):
         value = next(self.iterable)
         errs: List[ErrorDetail] = []
-        value = catch_validate_error(value, self.validator, [self.index], errs)
+        value = validate_iter_with_catch(value, self.validator, [self.index], errs)
         # 检查长度
         try:
             check_collection_length(Generator, self.index + 1, self.min_length, self.max_length)
@@ -991,22 +994,22 @@ class FunctionValidator(Validator):
                 errs.append(err)
                 continue
             elif pos_value is not None:
-                pos_value = catch_validate_error(pos_value, parameter.validator, [index], errs)
+                pos_value = validate_iter_with_catch(pos_value, parameter.validator, [index], errs)
                 validated_args.append(pos_value)
             elif kwargs_value is not None and parameter.kind != inspect.Parameter.POSITIONAL_ONLY:
-                kwargs_value = catch_validate_error(kwargs_value, parameter.validator, [param_name], errs)
+                kwargs_value = validate_iter_with_catch(kwargs_value, parameter.validator, [param_name], errs)
                 validated_kwargs[param_name] = kwargs_value
             elif parameter.default == inspect.Parameter.empty:
                 if parameter.kind == inspect.Parameter.VAR_POSITIONAL:
                     if args:
                         # 验证*args参数
-                        var_args: list = [catch_validate_error(arg_value, self.var_positional_validator, [index], errs)
+                        var_args: list = [validate_iter_with_catch(arg_value, self.var_positional_validator, [index], errs)
                                           for index, arg_value in enumerate(args[index:])]
                         validated_args.extend(var_args)
                 elif parameter.kind == inspect.Parameter.VAR_KEYWORD:
                     if kwargs:
                         # 验证**kwargs参数
-                        var_kwargs: dict = {k: catch_validate_error(v, self.var_kwargs_validator, [k], errs)
+                        var_kwargs: dict = {k: validate_iter_with_catch(v, self.var_kwargs_validator, [k], errs)
                                             for k, v in kwargs.items() if k not in used_kwargs}
                         validated_kwargs.update(var_kwargs)
                 elif parameter.kind == inspect.Parameter.KEYWORD_ONLY:
@@ -1251,7 +1254,7 @@ class TimeValidator(Validator):
     def int_to_time(self, value: int) -> datetime.time:
         if self.mode == 'second':
             hour = value // 3600
-            minute = value // 60
+            minute = (value % 3600) // 60
             second = value % 60
             return datetime.time(hour, minute, second)
         str_value = str(value)
@@ -1497,13 +1500,13 @@ def matching_validator(annotation: _T, **kwargs):
         return IsInstanceValidator.build(annotation, **kwargs)
 
 
-def catch_validate_error(
-        v,
-        val: Validator,
-        loc: List[Any],
-        errs: List[ErrorDetail],
-        exception_type: optional[str] = None,
-        errmsg: optional[str] = None
+def validate_iter_with_catch(
+    v,
+    val: Validator,
+    loc: List[Any],
+    errs: List[ErrorDetail],
+    exception_type: optional[str] = None,
+    errmsg: optional[str] = None
 ):
     """捕捉异常"""
     try:

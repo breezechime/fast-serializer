@@ -1,6 +1,7 @@
 # -*- coding:utf-8 -*-
 import dataclasses
 from typing import Optional, Any, Callable, Union
+
 from .types import optional, number
 from .utils import _recursive_repr, _format_type
 from .validator import Validator
@@ -76,19 +77,20 @@ class Field:
     validator_kwargs: optional[Union[dict, list]]
 
     """序列化器参数"""
-    ser_extras: optional[Union[dict, list]]
+    serializer_kwargs: optional[Union[dict, list]]
 
     """子验证器参数"""
     sub_validator_kwargs: optional[Union[dict, list]]
 
     """子序列化器参数"""
-    subser_extras: optional[Union[dict, list]]
+    sub_serializer_extras: optional[Union[dict, list]]
 
     __slots__ = (
         'name',
         'title',
         'annotation',
         'validator',
+        'serializer',
         'default',
         'default_factory',
         'required',
@@ -182,6 +184,7 @@ _DEFAULT_FIELD_VALUES: dict = dict(
     name=None,
     title=None,
     vaildator=None,
+    serializer=None,
     annotation=None,
     default=None,
     default_factory=None,
@@ -201,7 +204,7 @@ _DEFAULT_FIELD_VALUES: dict = dict(
     frozen=None,
     init_var=None,
     validator_kwargs=None,
-    ser_extras=None,
+    serializer_kwargs=None,
     sub_validator_kwargs=None,
-    subser_extras=None,
+    sub_serializer_kwargs=None,
 )

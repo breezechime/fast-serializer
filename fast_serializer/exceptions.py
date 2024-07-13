@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 import json
 from typing import (
-    Any, List, Union
+    Any, List, Union, Optional
 )
 from .types import optional
 from .utils import camel_to_snake, _format_type, isinstance_safe
@@ -157,3 +157,30 @@ class ValidatorBuildingError(TypeError):
 
     def __repr__(self):
         return self.__str__()
+
+
+class SerializerBuildingError(TypeError):
+    """序列化器构建异常"""
+
+    def __init__(self, msg: str, *args):
+        super().__init__(*args)
+        self.msg = msg
+
+    def __str__(self):
+        return self.msg
+
+    def __repr__(self):
+        return self.__str__()
+
+
+class SerializationError(ValueError):
+    """序列化异常"""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class SerializationValueError(ValueError):
+    def __init__(self, message: str):
+        self.message = message

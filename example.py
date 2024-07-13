@@ -1,16 +1,15 @@
-import collections
+import datetime
+import decimal
 import enum
-import inspect
-import time
-import typing
-from inspect import _ParameterKind  # type: ignore
-
-import typing_extensions
 import uuid
-from typing import Callable, Union
+from inspect import _ParameterKind  # type: ignore
+from typing import Union, Literal
+
+from sqlalchemy import Column, Integer, String, create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+from typing_extensions import TypedDict
 from fast_serializer import FastDataclass, field
-from fast_serializer.validator import FunctionValidator, CallableValidator, TupleValidator, TypedDictValidator
-from typing_extensions import TypedDict, is_typeddict
+from dataclasses import dataclass
 
 
 class AType(enum.IntEnum):
@@ -23,43 +22,25 @@ class HaHa(TypedDict, total=False):
     name: int
 
 
+engine = create_engine('sqlite:///test.db')
+Base = declarative_base()
+SessionFactory = sessionmaker(bind=engine)
+session = SessionFactory()
+
+
+class User(Base):
+    __tablename__ = 'user'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(64))
+
+
 class Test(FastDataclass):
-    arr: HaHa
+    name: tuple[int, ...]
 
 
-def test(v: int, *args: str, a: int):
-    pass
-    # print(kwargs)
-    # print(kwargs)
-    # print(args)
-
-
-# for k, param in inspect.signature(test).parameters.items():
-#     print(param.kind)
-#     print(type(param.kind))
-val = FunctionValidator.build(test)
-val.validate({'v': 123, 'a': 123, 'b': 123})
-# print(HaHa())
-# TypedDictValidator.build(HaHa)
-# print(Union[str])
-# print(dir(HaHa))
-# print(is_typeddict(HaHa))
-# print(Test.dataclass_fields['arr'])
-# a = Test(arr={'name': 'asd'})
-# print(a.arr)
-# print(next(a.arr))
-# print(type(a.arr))
-# val = TupleValidator.build(tuple[str, int])
-# v = val.validate((1,))
-# print(v)
-# a = set()
-# a.add(1)
-# a.add(1)
-# print(a)
-# print(Test.dataclass_fields)
-# print(Test.)
-# val = FunctionValidator.build(test)
-# val.validate(())
-# val = CallableValidator.build(Callable)
-# print(val)
-# print(arr)
+# print(str(datetime.timedelta(hours=59, minutes=2)))
+# Test.dataclass_fields['name'].serializer.to_python()
+a = Test(name=(1, 2))
+a.name = (1, 'asd', 2)
+print(a.to_dict())

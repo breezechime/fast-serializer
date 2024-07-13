@@ -1,14 +1,15 @@
 # -*- coding:utf-8 -*-
+import os
 
 
 class GlobalSetting:
     """全局设置"""
 
     """语言代码 Language code"""
-    LANGUAGE_CODE = 'zh-Hans'
+    LANGUAGE_CODE = os.environ.get('language', 'zh-Hans')
 
     """数据类默认必填"""
-    DATACLASS_DEFAULT_REQUIRED = False
+    DATACLASS_DEFAULT_REQUIRED = os.environ.get('required', True)
 
     """是否启用国际化"""
     USE_I18N = True

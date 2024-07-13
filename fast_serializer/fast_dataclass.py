@@ -5,16 +5,18 @@ import functools
 import sys
 from dataclasses import Field as DataclassField
 from types import MemberDescriptorType, GenericAlias, FunctionType
-from typing import ClassVar, Dict, Type, Any, List
+from typing import ClassVar, Dict, Type, Any, List, Self, Optional, Literal
 
 from .constants import (_T, _DATACLASS_CONFIG_NAME, _DATACLASS_FIELDS_NAME, _BASE_FIELD,
                         _MODULE_IDENTIFIER_RE, InitVar, _FIELD_CLASS_VAR, _FIELD_INIT_VAR,
                         _FAST_DATACLASS_DECORATORS_NAME,
-                        _FAST_SERIALIZER_NAME, _SUB_VALIDATOR_KWARGS_NAME)
+                        _FAST_SERIALIZER_NAME, _SUB_VALIDATOR_KWARGS_NAME, _FAST_DESERIALIZER_NAME)
 from .dataclass_config import DataclassConfig
 from .decorators import FastDataclassDecoratorInfo
-from .field import Field
-from .serializer import FastSerializer
+from .field import Field, field
+from .serializer import FastSerializer, FastDeserializer, matching_serializer
+from .types import optional
+from .utils import fast_dataclass_repr
 from .validator import matching_validator
 
 
@@ -205,12 +207,14 @@ def _generate_field(cls, field_name: str, annotation: type, dataclass_config: Da
         setattr(cls, field_name, field)  # 保留Field在未实例的数据类上
 
     field.name = field_name
-    field.required = dataclass_config.required
+    if field.required is None:
+        field.required = dataclass_config.required
     field.frozen = dataclass_config.frozen
     field.set_annotation(annotation)
 
     # 组装验证器参数传递
     field.validator_kwargs = field.validator_kwargs or dict()
+    field.serializer_kwargs = field.serializer_kwargs or dict()
     if field.min_length:
         field.validator_kwargs['min_length'] = field.min_length
     if field.max_length:
@@ -219,6 +223,8 @@ def _generate_field(cls, field_name: str, annotation: type, dataclass_config: Da
         field.validator_kwargs[_SUB_VALIDATOR_KWARGS_NAME] = field.sub_validator_kwargs
     # 查找对应类型的验证器
     field.validator = matching_validator(annotation, **field.validator_kwargs)
+    # 查找对应类型到序列化器
+    field.serializer = matching_serializer(annotation, **field.serializer_kwargs)
 
     # 接下来是对InitVar和ClassVar的支持
     # Assume it's a normal field until proven otherwise.  We're next
@@ -271,7 +277,8 @@ def _generate_field(cls, field_name: str, annotation: type, dataclass_config: Da
 
     # For real fields, disallow mutable defaults for known types.
     if field_type is _BASE_FIELD and isinstance(field.default, (list, dict, set)):
-        raise ValueError(f'mutable default {type(field.default)} for field {field.name} is not allowed: use default_factory')
+        raise ValueError(
+            f'mutable default {type(field.default)} for field {field.name} is not allowed: use default_factory')
 
     return field
 
@@ -370,12 +377,6 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
         dataclass_config = DataclassConfig()
         setattr(cls, _DATACLASS_CONFIG_NAME, dataclass_config)
 
-    # 设置快速数据类的序列化器
-    fast_serializer = getattr(cls, _FAST_SERIALIZER_NAME, None)
-    if fast_serializer is None:
-        fast_serializer = FastSerializer()
-        setattr(cls, _FAST_SERIALIZER_NAME, fast_serializer)
-
     # Find our base classes in reverse MRO order, and exclude
     # ourselves.  In reversed order so that more derived classes
     # override earlier field definitions in base classes.  As long as
@@ -419,7 +420,8 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
     # Now find fields in our class.  While doing so, validate some
     # things, and set the default values (as class attributes) where we can.
     # 现在在我们班上查找字段。在这样做的同时，验证一些并设置默认值（作为类属性），其中我们可以。
-    cls_fields = [_generate_field(cls, name, annotation, dataclass_config) for name, annotation in cls_annotations.items()]
+    cls_fields = [_generate_field(cls, name, annotation, dataclass_config) for name, annotation in
+                  cls_annotations.items()]
     [dataclass_fields.__setitem__(_field.name, _field) for _field in cls_fields]  # type: ignore
 
     # Do we have any Field members that don't also have annotations?
@@ -436,6 +438,18 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
     # 设置装饰器们
     dataclass_decorators = FastDataclassDecoratorInfo.build(cls)
     setattr(cls, _FAST_DATACLASS_DECORATORS_NAME, dataclass_decorators)
+
+    # 设置快速数据类的反序列化器
+    fast_deserializer = getattr(cls, _FAST_DESERIALIZER_NAME, None)
+    if fast_deserializer is None:
+        fast_deserializer = FastDeserializer(cls)
+        setattr(cls, _FAST_DESERIALIZER_NAME, fast_deserializer)
+
+    # 设置快速数据类的序列化器
+    fast_serializer = getattr(cls, _FAST_SERIALIZER_NAME, None)
+    if fast_serializer is None:
+        fast_serializer = FastSerializer(cls)
+        setattr(cls, _FAST_SERIALIZER_NAME, fast_serializer)
 
     # Was this class defined with an explicit __hash__?  Note that if
     # __eq__ is defined in this class, then python will automatically
@@ -502,41 +516,55 @@ class FastDataclass(metaclass=FastDataclassMeta):
     """在数据类上定义的字段的元数据"""
     dataclass_fields: ClassVar[Dict[str, Field]]
 
-    """用于存放数据类的装饰器数据"""
-    # __fast_dataclass_decorators__: ClassVar[FastDataclassDecoratorInfo]
-
-    """JsonSchema"""
-    # __fast_schema__: ClassVar[JsonSchema] = JsonSchema()
-
-    """快速序列化器，支持反序列化和序列化"""
+    """快速反序列化器"""
+    __fast_deserializer__: ClassVar[FastDeserializer]
+    """快速序列化器"""
     __fast_serializer__: ClassVar[FastSerializer]
 
-    def __init__(self, /, **kwargs):
-        # 隐藏特定代码的回溯信息，以便在发生异常时，使回溯信息更加简洁和有意义。
-        __tracebackhide__ = True
-        self.__fast_serializer__.deserialize(kwargs, instance=self)
+    """扩展字段"""
+    fast_dataclass_extra: optional[Dict[str, Any]]
 
-    def __post_init__(self):
+    __slots__ = '__dict__', 'fast_dataclass_extra'
+
+    def __init__(self, /, **kwargs):
+        """隐藏特定代码的回溯信息，以便在发生异常时，使回溯信息更加简洁和有意义。"""
+        __tracebackhide__ = True
+        self.__fast_deserializer__.deserialize(kwargs, instance=self)
+
+    @property
+    def dataclass_extra(self) -> Dict[str, Any]:
+        return {}
+
+    def dataclass_post_init(self, context: Optional[Any] = None):
         """
         Override this method to perform additional initialization after `__init__``.
-        重写此方法以在`__init之后执行附加初始化__`，这将非常有用。
+        重写此方法以在`__init__`之后执行附加初始化，这将非常有用。
         """
         pass
 
-    # def schema_dict(self):
-    #     raise NotImplementedError('')
+    def to_dict(self, *, mode: Literal['json', 'python'] = 'json', context: Optional[Any] = None,
+                by_alias: bool = False, exclude_none: bool = False,
+                errors: Literal['error', 'warn', 'ignore'] = 'warn') -> Dict[str, Any]:
+        return self.__fast_serializer__.to_python(
+            self,
+            mode=mode,
+            context=context,
+            by_alias=by_alias,
+            exclude_none=exclude_none,
+            errors=errors
+        )
+
+    @classmethod
+    def from_object(cls, obj: Any, /, errors: str = 'strict', context: optional[Any] = None) -> Self:
+        """来自任意的对象反序列化"""
+        return cls.__fast_deserializer__.deserialize(
+            obj,
+            errors=errors,
+            context=context,
+        )
 
     def __str__(self):
-        return f"{self.__class__.__name__}({self.__repr_names__(', ')})"
+        return f"{self.__class__.__name__}({fast_dataclass_repr(self, ', ')})"
 
     def __repr__(self) -> str:
         return self.__str__()
-
-    def __repr_names__(self, join_str: str):
-        return join_str.join(repr(v) if a is None else f'{a}={v!r}' for a, v in self.__repr_values__())
-
-    def __repr_values__(self):
-        for k, v in self.__dict__.items():
-            field = self.dataclass_fields.get(k)
-            if field and field.repr:
-                yield k, v

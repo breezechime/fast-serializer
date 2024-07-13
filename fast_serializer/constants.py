@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+import enum
 import re
 import types
 from types import MappingProxyType
@@ -66,6 +67,8 @@ _DATACLASS_FIELDS_NAME = 'dataclass_fields'
 # @dataclass.
 _DATACLASS_CONFIG_NAME = 'dataclass_config'
 
+_FAST_DESERIALIZER_NAME = '__fast_deserializer__'
+
 _FAST_SERIALIZER_NAME = '__fast_serializer__'
 
 _VALIDATOR_KWARGS_NAME = 'validator_kwargs'
@@ -74,12 +77,14 @@ _SUB_VALIDATOR_KWARGS_NAME = 'sub_validator_kwargs'
 
 _SERIALIZER_KWARGS_NAME = 'serializer_kwargs'
 
+_SUB_SERIALIZER_KWARGS_NAME = 'sub_serializer_kwargs'
+
 # 数据类装饰器名
 _FAST_DATACLASS_DECORATORS_NAME = '__fast_dataclass_decorators__'
 
 # The name of the function, that if it exists, is called at the end of
 # __init__.
-_POST_INIT_NAME = '__post_init__'
+_POST_INIT_NAME = 'dataclass_post_init'
 
 
 # String regex that string annotations for ClassVar or InitVar must match.
@@ -95,3 +100,15 @@ class _InitVarMeta(type):
 
 class InitVar(metaclass=_InitVarMeta):
     pass
+
+
+class SerMode(enum.Enum):
+
+    """到python dict未完全"""
+    python = 'python'
+
+    """到python dict"""
+    json = 'json'
+
+    """到json字符串"""
+    string = 'string'
