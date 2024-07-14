@@ -2,6 +2,7 @@
 import _thread
 import builtins
 import functools
+import json
 import sys
 from dataclasses import Field as DataclassField
 from types import MemberDescriptorType, GenericAlias, FunctionType
@@ -553,6 +554,18 @@ class FastDataclass(metaclass=FastDataclassMeta):
             exclude_none=exclude_none,
             errors=errors
         )
+
+    def to_json_str(self, *, indent: Optional[int] = None, ensure_ascii: bool = True, context: Optional[Any] = None,
+                    by_alias: bool = False, exclude_none: bool = False,
+                    errors: Literal['error', 'warn', 'ignore'] = 'warn') -> str:
+        return json.dumps(self.__fast_serializer__.to_python(
+            self,
+            mode='json',
+            context=context,
+            by_alias=by_alias,
+            exclude_none=exclude_none,
+            errors=errors
+        ), indent=indent, ensure_ascii=ensure_ascii)
 
     @classmethod
     def from_object(cls, obj: Any, /, errors: str = 'strict', context: optional[Any] = None) -> Self:

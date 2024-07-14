@@ -178,7 +178,7 @@ class FastSerializer:
         exclude_none: bool = False,
         errors: str = 'warn',
         context: optional[Any] = None,
-    ):
+    ) -> dict:
         """序列化到Python对象，JSON模式为任意语言可识别的JSON dict"""
         dict_value: dict = value.__dict__
         out_dict: dict = {}
@@ -498,7 +498,7 @@ class TimeDeltaSerializer(Serializer):
             hour_text = f'{hour}H' if hour > 0 else ''
             minute_text = f'{minute}M' if minute > 0 else ''
             second_text = f'{second}S' if second > 0 else ''
-            return f"{'-' if value.days < 0 else ''}P{abs(value.days)}DT{hour_text}{minute_text}{second_text}"
+            return str(f"{'-' if value.days < 0 else ''}P{abs(value.days)}DT{hour_text}{minute_text}{second_text}")
 
 
 class UuidSerializer(Serializer):
@@ -639,7 +639,7 @@ class UnionSerializer(Serializer):
 
     @property
     def name(self) -> str:
-        return f"{self.serializer_name}[{', '.join([ser.name for ser in self.serializers])}]"
+        return str(f"{self.serializer_name}[{', '.join([ser.name for ser in self.serializers])}]")
 
 
 class LiteralSerializer(Serializer):
@@ -680,7 +680,7 @@ class LiteralSerializer(Serializer):
 
     @property
     def name(self) -> str:
-        return f'{self.serializer_name}[{", ".join([f"{value!r}" for value in self.expected_values])}]'
+        return str(f'{self.serializer_name}[{", ".join([f"{value!r}" for value in self.expected_values])}]')
 
 
 class DictSerializer(Serializer):
@@ -746,7 +746,7 @@ class DictSerializer(Serializer):
 
     @property
     def name(self) -> str:
-        return f'{self.serializer_name}[{self.key_serializer.name}, {self.value_serializer.name}]'
+        return str(f'{self.serializer_name}[{self.key_serializer.name}, {self.value_serializer.name}]')
 
 
 class ListSerializer(Serializer):
@@ -903,7 +903,7 @@ class TupleSerializer(Serializer):
 
     @property
     def name(self) -> str:
-        return f'{self.serializer_name}[{", ".join([ser.name for ser in self.serializers])}]'
+        return str(f'{self.serializer_name}[{", ".join([ser.name for ser in self.serializers])}]')
 
     def check_variadic(self, value, parameter: SerParameter) -> bool:
         if not self.variadic and len(value) > len(self.serializers):

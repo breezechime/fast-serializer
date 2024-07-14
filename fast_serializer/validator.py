@@ -248,7 +248,7 @@ class IsInstanceValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f"{self.validator_name}[{_format_type(self.annotation)}]"
+        return str(f"{self.validator_name}[{_format_type(self.annotation)}]")
 
 
 class IsSubClassValidator(Validator):
@@ -267,7 +267,7 @@ class IsSubClassValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f"{self.validator_name}[{_format_type(self.annotation)}]"
+        return str(f"{self.validator_name}[{_format_type(self.annotation)}]")
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'IsSubClassValidator':
@@ -300,7 +300,7 @@ class OptionalValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f"{self.validator_name}[{self.validator.name}]"
+        return str(f"{self.validator_name}[{self.validator.name}]")
 
 
 class UnionValidator(Validator):
@@ -336,7 +336,7 @@ class UnionValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f"{self.validator_name}[{', '.join([val.name for val in self.validators])}]"
+        return str(f"{self.validator_name}[{', '.join([val.name for val in self.validators])}]")
 
 
 class LiteralValidator(Validator):
@@ -371,7 +371,7 @@ class LiteralValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f'{self.validator_name}[{", ".join([f"{value!r}" for value in self.expected_values])}]'
+        return str(f'{self.validator_name}[{", ".join([f"{value!r}" for value in self.expected_values])}]')
 
     @property
     def format_expected_values(self):
@@ -501,7 +501,7 @@ class DictValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f'{self.validator_name}[{self.key_validator.name}, {self.value_validator.name}]'
+        return str(f'{self.validator_name}[{self.key_validator.name}, {self.value_validator.name}]')
 
 
 class TypedDictField:
@@ -612,7 +612,7 @@ class ListValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f'{self.validator_name}[{self.item_validator.name}]'
+        return str(f'{self.validator_name}[{self.item_validator.name}]')
 
 
 class TupleValidator(Validator):
@@ -687,7 +687,7 @@ class TupleValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f'{self.validator_name}[{", ".join([val.name for val in self.validators])}]'
+        return str(f'{self.validator_name}[{", ".join([val.name for val in self.validators])}]')
 
 
 class SetValidator(Validator):
@@ -732,7 +732,7 @@ class SetValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f'{self.validator_name}[{self.item_validator.name}]'
+        return str(f'{self.validator_name}[{self.item_validator.name}]')
 
 
 class FrozenValidator(Validator):
@@ -777,7 +777,7 @@ class FrozenValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f'{self.validator_name}[{self.item_validator.name}]'
+        return str(f'{self.validator_name}[{self.item_validator.name}]')
 
 
 class DequeValidator(Validator):
@@ -822,7 +822,7 @@ class DequeValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f'{self.validator_name}[{self.item_validator.name}]'
+        return '{}[{}]'.format(self.validator_name, self.item_validator.name)
 
 
 class GeneratorValidator(Validator):
@@ -853,7 +853,7 @@ class GeneratorValidator(Validator):
         return iterator
 
     @property
-    def name(self) -> str:
+    def name(self):
         return f"{self.validator_name}[{_format_type(self.item_validator.name)}]"
 
     @classmethod
@@ -1377,11 +1377,11 @@ class IntEnumValidator(Validator):
             raise DataclassCustomError('int_enum_parsing', f'输入应为 {self.should_input_texts}')
 
     @property
-    def name(self) -> str:
+    def name(self):
         return f"{self.validator_name}[{_format_type(self.enum_class)}]"
 
     @property
-    def should_input_texts(self) -> str:
+    def should_input_texts(self):
         return f'{",".join([f"`{value}`" for value in self.values])}'
 
     @classmethod
@@ -1429,11 +1429,11 @@ class EnumValidator(Validator):
 
     @property
     def name(self) -> str:
-        return f'{self.validator_name}[{_format_type(self.enum_class)}]'
+        return str(f'{self.validator_name}[{_format_type(self.enum_class)}]')
 
     @property
     def should_input_texts(self) -> str:
-        return f'{",".join([f"`{value}`" for value in self.values])}'
+        return str(f'{",".join([f"`{value}`" for value in self.values])}')
 
 
 class UuidValidator(Validator):

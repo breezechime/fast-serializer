@@ -36,11 +36,11 @@ class User(Base):
 
 
 class Test(FastDataclass):
-    name: tuple[int, ...]
+    name: tuple[str, ...]
 
 
 # print(str(datetime.timedelta(hours=59, minutes=2)))
 # Test.dataclass_fields['name'].serializer.to_python()
-a = Test(name=(1, 2))
-a.name = (1, 'asd', 2)
-print(a.to_dict())
+a = Test(name=('阿圣诞节啊是', 'asd'))
+# a.name = (1, 'asd', 2)
+print(a.to_json_str(ensure_ascii=False))

@@ -50,6 +50,10 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(64))
 
+    @classmethod
+    def __get_pydantic_core_schema__(cls):
+        return None
+
 
 Base.metadata.create_all(engine)
 
@@ -59,10 +63,9 @@ class Test(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=False)
 
     # id: str
-    name: tuple[str, int]
+    name: tuple[int, ...]
 
 
 # print(Test.__pydantic_serializer__)
-aa = Test(name=('a', 1))
-aa.name = ('a', 'asd')
-print(aa.model_dump(mode='json'))
+aa = Test(name=(1, 2))
+print(aa.model_dump_json(mode='json'))

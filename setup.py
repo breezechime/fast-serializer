@@ -1,5 +1,5 @@
 from setuptools import setup
-
+from Cython.Build import cythonize
 setup(
     name='pyserializer',
     version='0.8.1',
@@ -12,6 +12,7 @@ setup(
     license='MIT',
     packages=['fast_serializer'],
     install_requires=[],
+    ext_modules=cythonize('fast_serializer/*.py', language_level=3),
     classifiers=[
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
