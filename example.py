@@ -1,15 +1,9 @@
-import datetime
-import decimal
 import enum
-import uuid
-from inspect import _ParameterKind  # type: ignore
-from typing import Union, Literal
-
+import time
 from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from typing_extensions import TypedDict
-from fast_serializer import FastDataclass, field
-from dataclasses import dataclass
+from fast_serializer import FastDataclass
 
 
 class AType(enum.IntEnum):
@@ -36,11 +30,16 @@ class User(Base):
 
 
 class Test(FastDataclass):
-    name: tuple[str, ...]
+    name: list[str]
 
 
-# print(str(datetime.timedelta(hours=59, minutes=2)))
-# Test.dataclass_fields['name'].serializer.to_python()
-a = Test(name=('阿圣诞节啊是', 'asd'))
-# a.name = (1, 'asd', 2)
-print(a.to_json_str(ensure_ascii=False))
+now = time.time()
+arr = []
+for i in range(10000):
+    a = Test(name=('阿圣诞节啊是', 'asd'))
+    arr.append(a)
+
+print(time.time() - now)
+# a = Test(name=('阿圣诞节啊是', 1))
+# value = a.to_dict()
+# print(value)

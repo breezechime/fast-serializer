@@ -8,13 +8,13 @@ import uuid
 import warnings
 from abc import ABC
 from typing import Dict, Any, Union, List, Callable, Generator, Optional, get_args, Literal, Tuple, Mapping, Set, \
-    FrozenSet
+    FrozenSet, Type
 from .constants import _DATACLASS_FIELDS_NAME, _POST_INIT_NAME, SerMode, _T
 from .exceptions import (ErrorDetail, ValidationError, SerializationError, SerializerBuildingError,
                          SerializationValueError)
 from .field import Field
 from .type_parser import type_parser
-from .types import optional
+from .types import optional, DeserializeError, SerializeError
 from .utils import isinstance_safe, _format_type, issubclass_safe, get_sub_serializer_kwargs
 from .validator import validate_iter_with_catch
 
@@ -23,18 +23,19 @@ class FastDeserializer:
     """快速反序列化器"""
 
     name: str
-    fast_dataclass: type
+    fast_dataclass: Type[_T]
     fields: Dict[str, Field]
 
-    def __init__(self, dataclass: type, fields: optional[Dict[str, Field]] = None):
+    def __init__(self, dataclass: Type[_T], fields: optional[Dict[str, Field]] = None):
         self.dataclass = dataclass
         self.name = dataclass.__name__
         self.fields = fields or getattr(dataclass, _DATACLASS_FIELDS_NAME, {})
 
-    def deserialize(self, input: Union[dict, object], errors: str = 'strict', context: optional[Any] = None, instance=None) -> Any:
+    def deserialize(self, input: Union[dict, object], errors: DeserializeError = 'strict', context: optional[Any] = None,
+                    instance: _T = None) -> _T:
         """反序列化"""
         if instance is None:
-            instance = self.dataclass.__new__(self.dataclass)  # type: ignore
+            instance: _T = self.dataclass.__new__(self.dataclass)  # type: ignore
 
         self.deserialize_init(input, instance, errors)
 
@@ -42,9 +43,11 @@ class FastDeserializer:
         self.call_post_init(instance, context)
         return instance
 
-    def deserialize_init(self, input: Union[dict, object], instance, errors: str = 'strict'):
-        is_dict = isinstance_safe(input, dict)
+    def deserialize_init(self, input: Union[dict, object], instance: _T, errors: DeserializeError = 'strict'):
+        is_dict: bool = isinstance_safe(input, dict)
         errs: List[ErrorDetail] = []
+        field_name: str
+        field: Field
         for field_name, field in self.fields.items():
             try:
                 field_value = input[field_name] if is_dict else getattr(input, field_name)
@@ -88,7 +91,7 @@ class SerParameter:
     context: optional[Any]
     exclude: optional[dict]
     include: optional[dict]
-    errors: str
+    errors: SerializeError
     check: SerCheck
 
     __slots__ = ('mode', 'error_messages', 'by_alias', 'exclude_unset', 'exclude_none', 'context',
@@ -104,7 +107,7 @@ class SerParameter:
         context: optional[Any] = None,
         exclude: optional[dict] = None,
         include: optional[dict] = None,
-        errors: str = 'warn',
+        errors: SerializeError = 'warn',
     ):
         self.mode = mode
         self.by_alias = by_alias
@@ -118,7 +121,7 @@ class SerParameter:
         self.error_messages = []
         self.check = SerCheck.NONE
 
-    def on_fallback(self, expect_type: Union[type, str], value: Any, got_type: Union[type, str]):
+    def on_fallback(self, expect_type, value: Any, got_type):
         if value is None:
             return value
         elif self.check != SerCheck.NONE:
@@ -126,7 +129,7 @@ class SerParameter:
         else:
             self.fallback_error(expect_type, got_type or type(value))
 
-    def fallback_error(self, expect_type: Union[type, str], got_type: Union[type, str]):
+    def fallback_error(self, expect_type, got_type):
         message = f'预期为 `{_format_type(expect_type)}`，但实际为 `{_format_type(got_type)}` - 序列化值可能与预期不符'
         self.add_error_message(message)
 
@@ -159,10 +162,10 @@ class FastSerializer:
     """快速数据类序列化器"""
 
     name: str
-    fast_dataclass: type
+    fast_dataclass: Type[_T]
     fields: Dict[str, Field]
 
-    def __init__(self, dataclass: type, fields: optional[Dict[str, Field]] = None):
+    def __init__(self, dataclass: Type[_T], fields: optional[Dict[str, Field]] = None):
         self.dataclass = dataclass
         self.name = dataclass.__name__
         self.fields = fields or getattr(dataclass, _DATACLASS_FIELDS_NAME, {})
@@ -176,7 +179,7 @@ class FastSerializer:
         exclude: list = None,
         by_alias: bool = True,
         exclude_none: bool = False,
-        errors: str = 'warn',
+        errors: SerializeError = 'warn',
         context: optional[Any] = None,
     ) -> dict:
         """序列化到Python对象，JSON模式为任意语言可识别的JSON dict"""
@@ -774,6 +777,13 @@ class ListSerializer(Serializer):
     def uncheck_serialize(cls, value, parameter: SerParameter) -> list:
         return [serialize_any_to_json_value(value, parameter) for value in value]
 
+    @classmethod
+    def build(cls, annotation: _T, **kwargs) -> 'ListSerializer':
+        args = get_args(annotation)
+        sub_annotation = args[0] if args else Any
+        item_serializer = matching_serializer(sub_annotation, **get_sub_serializer_kwargs(kwargs))
+        return cls(item_serializer=item_serializer, **kwargs)
+
 
 class SetSerializer(Serializer):
     """集合序列化器"""
@@ -983,6 +993,7 @@ GLOBAL_SERIALIZERS: dict = {
 }
 
 MATCH_SERIALIZERS: dict = {
+    Any: AnySerializer,
     str: StrSerializer,
     int: IntegerSerializer,
     float: FloatSerializer,
@@ -1016,9 +1027,14 @@ MATCH_SERIALIZERS: dict = {
 
 
 def matching_serializer(annotation, **kwargs):
-    """匹配验证器"""
+    """匹配序列化器"""
     origin_annotation = type_parser.get_origin_safe(annotation) or annotation
     # 如何未指定kwargs尝试在全局序列化器中查找（省内存）
+    if not kwargs:
+        try:
+            return GLOBAL_SERIALIZERS[origin_annotation]
+        except KeyError:
+            pass
     try:
         return MATCH_SERIALIZERS[origin_annotation].build(annotation, **kwargs)
     except KeyError:

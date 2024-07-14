@@ -1,7 +1,5 @@
 # -*- coding:utf-8 -*-
-import _thread
 import builtins
-import functools
 import json
 import sys
 from dataclasses import Field as DataclassField
@@ -14,10 +12,10 @@ from .constants import (_T, _DATACLASS_CONFIG_NAME, _DATACLASS_FIELDS_NAME, _BAS
                         _FAST_SERIALIZER_NAME, _SUB_VALIDATOR_KWARGS_NAME, _FAST_DESERIALIZER_NAME)
 from .dataclass_config import DataclassConfig
 from .decorators import FastDataclassDecoratorInfo
-from .field import Field, field
+from .field import Field
 from .serializer import FastSerializer, FastDeserializer, matching_serializer
-from .types import optional
-from .utils import fast_dataclass_repr
+from .types import optional, DeserializeError
+from .utils import fast_dataclass_repr, _recursive_repr
 from .validator import matching_validator
 
 
@@ -31,27 +29,6 @@ def _tuple_str(obj_name, fields: List[Field]):
         return '()'
     # Note the trailing comma, needed if this turns out to be a 1-tuple.
     return f'({",".join([f"{obj_name}.{f.name}" for f in fields])},)'
-
-
-# This function's logic is copied from "recursive_repr" function in
-# repr lib module to avoid dependency.
-def _recursive_repr(user_function):
-    """Decorator to make a repr function return "..." for a recursive call."""
-    repr_running = set()
-
-    @functools.wraps(user_function)
-    def wrapper(self):
-        key = id(self), _thread.get_ident()
-        if key in repr_running:
-            return '...'
-        repr_running.add(key)
-        try:
-            result = user_function(self)
-        finally:
-            repr_running.discard(key)
-        return result
-
-    return wrapper
 
 
 def _create_fn(name, args, body, *, _globals=None, _locals=None, return_type=None):
@@ -182,7 +159,7 @@ def _is_type(annotation, cls, a_module, a_type, is_type_predicate):
     return False
 
 
-def _generate_field(cls, field_name: str, annotation: type, dataclass_config: DataclassConfig) -> Field:
+def _generate_field(cls, field_name: str, annotation: Any, dataclass_config: DataclassConfig) -> Field:
     # Return a Field object for this field name and type.  ClassVars
     # and InitVars are also returned, but marked as such (see f._field_type).
     # 返回此字段名称和类型的Field对象。ClassVars和InitVars也会返回，但标记为这样（请参阅f.field_type）。
@@ -392,7 +369,7 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
         # decorator.  That is, they have a _FIELDS attribute.
         base_fields = getattr(base, _DATACLASS_FIELDS_NAME, None)
         if base_fields:
-            has_dataclass_bases = True
+            # has_dataclass_bases = True
             for _field in base_fields.values():
                 dataclass_fields[_field.name] = _field
                 cls.__annotations__[_field.name] = _field.type
@@ -474,7 +451,8 @@ def generate_fast_dataclass(cls: Type[_T]) -> Type[_T]:
     #     _set_new_attribute(cls, '__repr__', _repr_fn(_fields, globals))
 
     # Decide if/how we're going to create a hash function.
-    # hash_action = _hash_action[bool(dataclass_config.unsafe_hash), bool(dataclass_config.eq), bool(dataclass_config.frozen),
+    # hash_action = _hash_action[bool(dataclass_config.unsafe_hash), bool(dataclass_config.eq),
+    # bool(dataclass_config.frozen),
     #                            has_explicit_hash]
     # if hash_action:
     #     # No need to call _set_new_attribute here, since by the time
@@ -519,18 +497,19 @@ class FastDataclass(metaclass=FastDataclassMeta):
 
     """快速反序列化器"""
     __fast_deserializer__: ClassVar[FastDeserializer]
+
     """快速序列化器"""
     __fast_serializer__: ClassVar[FastSerializer]
 
     """扩展字段"""
     fast_dataclass_extra: optional[Dict[str, Any]]
 
-    __slots__ = '__dict__', 'fast_dataclass_extra'
+    __slots__ = ('__dict__', 'fast_dataclass_extra')
 
-    def __init__(self, /, **kwargs):
+    def __init__(self, /, errors: DeserializeError = 'strict', **kwargs):
         """隐藏特定代码的回溯信息，以便在发生异常时，使回溯信息更加简洁和有意义。"""
         __tracebackhide__ = True
-        self.__fast_deserializer__.deserialize(kwargs, instance=self)
+        self.__fast_deserializer__.deserialize(kwargs, errors=errors, instance=self)
 
     @property
     def dataclass_extra(self) -> Dict[str, Any]:
@@ -568,7 +547,8 @@ class FastDataclass(metaclass=FastDataclassMeta):
         ), indent=indent, ensure_ascii=ensure_ascii)
 
     @classmethod
-    def from_object(cls, obj: Any, /, errors: str = 'strict', context: optional[Any] = None) -> Self:
+    def from_object(cls, obj: Any, /, errors: DeserializeError = 'strict',
+                    context: optional[Any] = None) -> Self:
         """来自任意的对象反序列化"""
         return cls.__fast_deserializer__.deserialize(
             obj,

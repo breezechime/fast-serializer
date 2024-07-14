@@ -1,8 +1,8 @@
 from setuptools import setup
 from Cython.Build import cythonize
 setup(
-    name='pyserializer',
-    version='0.8.1',
+    name='fast-serializer',
+    version='0.8.2',
     author='且听风铃、我是指针*、ZDLAY、KYZ',
     author_email='breezechime@163.com',
     description='python 数据类验证器和序列化框架',

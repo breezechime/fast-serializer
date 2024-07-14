@@ -1,41 +1,21 @@
-import datetime
-import decimal
 import enum
-import uuid
-from typing import NamedTuple, TypeVar, Union, Literal
+import time
 
-from pydantic import BaseModel, Field, ConfigDict
-from pydantic_core import PydanticSerializationUnexpectedValue
-from sqlalchemy import create_engine, Column, Integer, String
+from pydantic import BaseModel
+from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from typing_extensions import TypedDict
+from fast_serializer import FastDataclass
 
 
-def test(v: int, a: int):
-    print(v)
-    # print(kwargs)
-    # print(args)
-    # print(kwargs)
-    # print(args)
-    # print(kwargs)
+class AType(enum.IntEnum):
+    RED = 1
+
+    BLUE = 2
 
 
-class Point(NamedTuple):
-    x: int
-    y: int
-
-
-class AType(enum.Enum):
-    RED = Point(1, 0)
-
-
-Foobar = TypeVar('Foobar')
-BoundFloat = TypeVar('BoundFloat', bound=float)
-IntStr = TypeVar('IntStr', int, str)
-
-
-class HaHa(TypedDict):
-    name: str
+class HaHa(TypedDict, total=False):
+    name: int
 
 
 engine = create_engine('sqlite:///test.db')
@@ -50,22 +30,18 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(64))
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls):
-        return None
-
-
-Base.metadata.create_all(engine)
-
 
 class Test(BaseModel):
-
-    model_config = ConfigDict(from_attributes=True, use_enum_values=False)
-
-    # id: str
-    name: tuple[int, ...]
+    name: list[str]
 
 
-# print(Test.__pydantic_serializer__)
-aa = Test(name=(1, 2))
-print(aa.model_dump_json(mode='json'))
+now = time.time()
+arr = []
+for i in range(10000):
+    a = Test(name=('阿圣诞节啊是', 'asd'))
+    arr.append(a)
+
+print(time.time() - now)
+# a = Test(name=('阿圣诞节啊是', 1))
+# value = a.to_dict()
+# print(value)

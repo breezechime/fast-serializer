@@ -633,10 +633,10 @@ class TupleValidator(Validator):
         self.min_length = min_length
         self.max_length = max_length
 
-    def validate(self, value):
+    def validate(self, value) -> tuple:
         collection = extract_collection(value, 'tuple_type', '元祖')
         # 检查长度
-        length = len(collection)
+        length: int = len(collection)
         check_collection_length(self.annotation, length, self.min_length, self.max_length)
         errs: List[ErrorDetail] = []
         # 不是无限延伸的元祖
@@ -647,25 +647,28 @@ class TupleValidator(Validator):
                     'too_long',
                     f'验证后元组最多应包含{should_be_length}个项目，而不是{length}个'
                 )
-            result: list = []
-            for i, val in enumerate(self.validators):
-                try:
-                    v = collection[i]
-                    result.append(validate_iter_with_catch(v, val, [i], errs))
-                except IndexError:
-                    errs.append(ErrorDetail([i], collection, 'missing', '字段为必填项'))
-            if errs:
-                raise ValidationError(title=self.name, line_errors=errs)
-            return tuple(result)
-        # 可变
-        validator = self.validators[0]
-        result: tuple = tuple(
-            validate_iter_with_catch(item, validator, [i], errs)
-            for i, item in enumerate(collection)
-        )
+            result: tuple = tuple(
+                self.validate_item(collection, i, val, errs)
+                for i, val in enumerate(self.validators)
+            )
+        else:
+            # 可变
+            validator = self.validators[0]
+            result: tuple = tuple(
+                validate_iter_with_catch(item, validator, [i], errs)
+                for i, item in enumerate(collection)
+            )
         if errs:
             raise ValidationError(title=self.name, line_errors=errs)
         return result
+
+    @staticmethod
+    def validate_item(collection, index: int, validator: Validator, errs: List[ErrorDetail]):
+        try:
+            return validate_iter_with_catch(collection[index], validator, [index], errs)
+        except IndexError:
+            errs.append(ErrorDetail([index], collection, 'missing', '字段为必填项'))
+        return None
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'TupleValidator':
@@ -1542,7 +1545,7 @@ def validate_iter_with_catch(
     return v
 
 
-def check_collection_length(annotation, length: int, min_length: int, max_length: int):
+def check_collection_length(annotation, length: int, min_length: optional[int], max_length: optional[int]):
     """检查集合长度"""
     annotation_texts = {
         list: '列表',

@@ -84,6 +84,10 @@ class Field:
     """子序列化器参数"""
     sub_serializer_kwargs: optional[Union[dict, list]]
 
+    def __init__(self, **kwargs): ...
+
+    def set_annotation(self, annotation): ...
+
     def get_default_value(self): ...
 
 
