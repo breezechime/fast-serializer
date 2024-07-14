@@ -65,7 +65,7 @@ class FastDeserializer:
             raise ValidationError(title=self.name, line_errors=errs)
 
     @staticmethod
-    def call_post_init(instance, context: optional[Any] = None) -> None:
+    def call_post_init(instance: _T, context: optional[Any] = None):
         if hasattr(instance, _POST_INIT_NAME):
             getattr(instance, _POST_INIT_NAME)(context)
 

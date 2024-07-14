@@ -60,6 +60,7 @@ class StringValidator(Validator):
     validator_name = 'str'
     annotation = str
     allow_number: bool = True
+    numbers_types = (int, float, decimal.Decimal)
 
     def __init__(self, allow_number: bool = True, **kwargs):
         super().__init__(**kwargs)
@@ -72,9 +73,7 @@ class StringValidator(Validator):
             return maybe_str
         elif isinstance_safe(value, bytearray):
             return value.decode('utf-8')
-        numbers_types = (IntegerValidator.annotation, FloatValidator.annotation,
-                         DecimalValidator.annotation, BoolValidator.annotation)
-        if self.allow_number and isinstance_safe(value, numbers_types):
+        if self.allow_number and isinstance_safe(value, self.numbers_types) and not isinstance_safe(value, bool):
             return self.annotation(value)
         raise ValueError('输入应为有效字符串')
 
@@ -468,7 +467,7 @@ class DictValidator(Validator):
         if not isinstance_safe(value, Mapping):
             raise DataclassCustomError('dict_type', '输入应为有效键值对')
         # 验证长度
-        length = len(value)
+        length: int = len(value)
         check_collection_length(self.annotation, length, self.min_length, self.max_length)
         # 优化（双any可省略很多验证性能）
         key_validator_is_any = self.key_validator.annotation is Any
@@ -476,18 +475,14 @@ class DictValidator(Validator):
         if key_validator_is_any and value_validator_is_any:
             return value
         errs: List[ErrorDetail] = []
-        # 验证keys(any优化)
-        if key_validator_is_any:
-            keys = value.keys()
-        else:
-            keys = [validate_iter_with_catch(v, self.key_validator, [i], errs) for i, v in enumerate(value.keys())]
-        # 验证values
-        if value_validator_is_any:
-            values = value.values()
-        else:
-            values = [validate_iter_with_catch(v, self.value_validator, [i], errs) for i, v in enumerate(value.values())]
-        res_dict = self.annotation(zip(keys, values))
-        return res_dict
+        new_dict: dict = dict()
+        for key, dict_value in value.items():
+            validated_key = validate_iter_with_catch(key, self.key_validator, [key, '[key]'], errs)
+            validated_value = validate_iter_with_catch(dict_value, self.value_validator, [key], errs)
+            new_dict[validated_key] = validated_value
+        if errs:
+            raise ValidationError(title=self.name, line_errors=errs)
+        return new_dict
 
     @classmethod
     def build(cls, annotation: _T, **kwargs) -> 'DictValidator':
@@ -579,22 +574,26 @@ class ListValidator(Validator):
     min_length: optional[int]
     max_length: optional[int]
 
-    def __init__(self, item_validator: Validator, min_length: optional[int] = None, max_length: optional[int] = None,
+    def __init__(self, item_validator: Validator, min_length: optional[int] = None,
+                 max_length: optional[int] = None,
                  **kwargs):
         super().__init__(**kwargs)
         self.item_validator = item_validator
         self.min_length = min_length
         self.max_length = max_length
 
-    def validate(self, value):
+    def validate(self, value) -> list:
         collection = extract_collection(value, 'list_type', '列表')
+        collection_length: int = len(collection)
         # 验证长度
-        check_collection_length(self.annotation, len(collection), self.min_length, self.max_length)
+        check_collection_length(self.annotation, collection_length, self.min_length, self.max_length)
         # 优化
         if self.item_validator.annotation is Any:
             is_list = isinstance_safe(collection, list)
             return collection if is_list else self.annotation(collection)
+
         errs: List[ErrorDetail] = []
+        i: int
         result: list = [
             validate_iter_with_catch(item, self.item_validator, [i], errs)
             for i, item in enumerate(collection)

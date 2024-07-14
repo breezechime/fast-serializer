@@ -32,16 +32,10 @@ class User(Base):
 
 
 class Test(BaseModel):
-    name: list[str]
+    name: str
 
 
-now = time.time()
-arr = []
-for i in range(10000):
-    a = Test(name=('阿圣诞节啊是', 'asd'))
-    arr.append(a)
-
-print(time.time() - now)
+a = Test(name=False)
 # a = Test(name=('阿圣诞节啊是', 1))
 # value = a.to_dict()
 # print(value)
