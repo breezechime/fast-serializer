@@ -1,11 +1,7 @@
 # -*- coding:utf-8 -*-
 import dataclasses
-from typing import Literal
-from .types import optional
+from .types import optional, ExtraValues
 from .globals import GlobalSetting
-
-
-ExtraValues = Literal['allow', 'ignore', 'forbid']
 
 
 @dataclasses.dataclass

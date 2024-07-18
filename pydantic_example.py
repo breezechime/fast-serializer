@@ -1,11 +1,12 @@
 import enum
 import time
+import typing
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from typing_extensions import TypedDict
-from fast_serializer import FastDataclass
+from fast_serializer import FastDataclass, DataclassConfig
 
 
 class AType(enum.IntEnum):
@@ -32,10 +33,12 @@ class User(Base):
 
 
 class Test(BaseModel):
-    name: str
+    model_config = ConfigDict(extra='allow')
+
+    name: str = Field(frozen=True)
 
 
-a = Test(name=False)
-# a = Test(name=('阿圣诞节啊是', 1))
-# value = a.to_dict()
-# print(value)
+a = Test(name='asd')
+a.__pydantic_extra__ = {'bb': 123}
+print(a.model_extra)
+# a.name = 'bbb'

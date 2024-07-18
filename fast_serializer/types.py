@@ -12,3 +12,5 @@ number = Union[int, float, decimal.Decimal]
 DeserializeError = Literal['strict', 'warn', 'ignore']
 
 SerializeError = Literal['warn', 'error', 'ignore']
+
+ExtraValues = Literal['allow', 'ignore', 'forbid']

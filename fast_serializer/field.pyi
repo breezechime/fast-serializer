@@ -1,5 +1,4 @@
 from typing import Union, Callable, Any
-
 from fast_serializer.serializer import Serializer
 from fast_serializer.types import optional, number
 from fast_serializer.validator import Validator

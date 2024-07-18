@@ -9,7 +9,10 @@ import warnings
 from abc import ABC
 from typing import Dict, Any, Union, List, Callable, Generator, Optional, get_args, Literal, Tuple, Mapping, Set, \
     FrozenSet, Type
-from .constants import _DATACLASS_FIELDS_NAME, _POST_INIT_NAME, SerMode, _T
+
+from fast_serializer import DataclassConfig
+
+from .constants import _DATACLASS_FIELDS_NAME, _POST_INIT_NAME, SerMode, _T, _DATACLASS_CONFIG_NAME
 from .exceptions import (ErrorDetail, ValidationError, SerializationError, SerializerBuildingError,
                          SerializationValueError)
 from .field import Field
@@ -37,6 +40,7 @@ class FastDeserializer:
         if instance is None:
             instance: _T = self.dataclass.__new__(self.dataclass)  # type: ignore
 
+        setattr(instance, '__fast_dataclass_extra__', {})
         self.deserialize_init(input, instance, errors)
 
         # post_init
@@ -61,6 +65,20 @@ class FastDeserializer:
                 field_value = validate_iter_with_catch(field_value, field.validator, [field_name], errs)
 
             setattr(instance, field_name, field_value)
+
+        if is_dict:
+            dataclass_config = getattr(self.dataclass, _DATACLASS_CONFIG_NAME, DataclassConfig())
+            for key, value in input.items():
+                if key in self.fields:
+                    continue
+                if dataclass_config.extra == 'ignore':
+                    continue
+                elif dataclass_config.extra == 'forbid':
+                    err = ErrorDetail([key], value, 'extra_forbidden', '不允许额外字段')
+                    errs.append(err)
+                else:
+                    instance.fast_dataclass_extra[key] = value
+
         if errs and errors != 'ignore':
             raise ValidationError(title=self.name, line_errors=errs)
 

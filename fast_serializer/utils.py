@@ -64,14 +64,14 @@ def isinstance_safe(v, tp) -> bool:
     """安全的检查类型"""
     try:
         return isinstance(v, tp)
-    except (Exception,):
+    except TypeError:
         return False
 
 
 def issubclass_safe(v, tp) -> bool:
     try:
         return issubclass(v, tp)
-    except (Exception,):
+    except TypeError:
         return False
 
 
@@ -103,3 +103,7 @@ def get_sub_serializer_kwargs(serializer_kwargs: Union[dict, list], index: int =
             return kwargs
     except (KeyError,):
         return dict()
+
+
+def is_valid_field_name(name: str) -> bool:
+    return not name.startswith('_')

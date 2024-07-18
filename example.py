@@ -3,7 +3,7 @@ import time
 from sqlalchemy import Column, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from typing_extensions import TypedDict
-from fast_serializer import FastDataclass
+from fast_serializer import FastDataclass, DataclassConfig
 
 
 class AType(enum.IntEnum):
@@ -30,11 +30,10 @@ class User(Base):
 
 
 class Test(FastDataclass):
+    dataclass_config = DataclassConfig(extra='forbid', frozen=True)
+
     name: str
 
 
-a = Test(name=False)
-print(a.name)
-# a = Test(name=('阿圣诞节啊是', 1))
-# value = a.to_dict()
-# print(value)
+a = Test(name='asd')
+# a.name = 'bbb'

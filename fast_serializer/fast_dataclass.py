@@ -5,7 +5,6 @@ import sys
 from dataclasses import Field as DataclassField
 from types import MemberDescriptorType, GenericAlias, FunctionType
 from typing import ClassVar, Dict, Type, Any, List, Self, Optional, Literal
-
 from .constants import (_T, _DATACLASS_CONFIG_NAME, _DATACLASS_FIELDS_NAME, _BASE_FIELD,
                         _MODULE_IDENTIFIER_RE, InitVar, _FIELD_CLASS_VAR, _FIELD_INIT_VAR,
                         _FAST_DATACLASS_DECORATORS_NAME,
@@ -15,8 +14,9 @@ from .decorators import FastDataclassDecoratorInfo
 from .field import Field
 from .serializer import FastSerializer, FastDeserializer, matching_serializer
 from .types import optional, DeserializeError
-from .utils import fast_dataclass_repr, _recursive_repr
+from .utils import fast_dataclass_repr, _recursive_repr, is_valid_field_name
 from .validator import matching_validator
+from .exceptions import ErrorDetail, ValidationError
 
 
 def _tuple_str(obj_name, fields: List[Field]):
@@ -502,7 +502,7 @@ class FastDataclass(metaclass=FastDataclassMeta):
     __fast_serializer__: ClassVar[FastSerializer]
 
     """扩展字段"""
-    fast_dataclass_extra: optional[Dict[str, Any]]
+    __fast_dataclass_extra__: optional[Dict[str, Any]] = Field(init=False)
 
     __slots__ = ('__dict__', 'fast_dataclass_extra')
 
@@ -513,7 +513,7 @@ class FastDataclass(metaclass=FastDataclassMeta):
 
     @property
     def dataclass_extra(self) -> Dict[str, Any]:
-        return {}
+        return self.__fast_dataclass_extra__ or {}
 
     def dataclass_post_init(self, context: Optional[Any] = None):
         """
@@ -522,9 +522,15 @@ class FastDataclass(metaclass=FastDataclassMeta):
         """
         pass
 
-    def to_dict(self, *, mode: Literal['json', 'python'] = 'json', context: Optional[Any] = None,
-                by_alias: bool = False, exclude_none: bool = False,
-                errors: Literal['error', 'warn', 'ignore'] = 'warn') -> Dict[str, Any]:
+    def to_dict(
+        self,
+        *,
+        mode: Literal['json', 'python'] = 'json',
+        context: Optional[Any] = None,
+        by_alias: bool = False,
+        exclude_none: bool = False,
+        errors: Literal['error', 'warn', 'ignore'] = 'warn'
+    ) -> Dict[str, Any]:
         return self.__fast_serializer__.to_python(
             self,
             mode=mode,
@@ -534,9 +540,16 @@ class FastDataclass(metaclass=FastDataclassMeta):
             errors=errors
         )
 
-    def to_json_str(self, *, indent: Optional[int] = None, ensure_ascii: bool = True, context: Optional[Any] = None,
-                    by_alias: bool = False, exclude_none: bool = False,
-                    errors: Literal['error', 'warn', 'ignore'] = 'warn') -> str:
+    def to_json_str(
+        self,
+        *,
+        indent: Optional[int] = None,
+        ensure_ascii: bool = True,
+        context: Optional[Any] = None,
+        by_alias: bool = False,
+        exclude_none: bool = False,
+        errors: Literal['error', 'warn', 'ignore'] = 'warn'
+    ) -> str:
         return json.dumps(self.__fast_serializer__.to_python(
             self,
             mode='json',
@@ -547,8 +560,13 @@ class FastDataclass(metaclass=FastDataclassMeta):
         ), indent=indent, ensure_ascii=ensure_ascii)
 
     @classmethod
-    def from_object(cls, obj: Any, /, errors: DeserializeError = 'strict',
-                    context: optional[Any] = None) -> Self:
+    def from_object(
+        cls,
+        obj: Any,
+        *,
+        errors: DeserializeError = 'strict',
+        context: optional[Any] = None
+    ) -> Self:
         """来自任意的对象反序列化"""
         return cls.__fast_deserializer__.deserialize(
             obj,
@@ -561,3 +579,24 @@ class FastDataclass(metaclass=FastDataclassMeta):
 
     def __repr__(self) -> str:
         return self.__str__()
+
+    def __setattr__(self, key, value) -> None:
+        if not is_valid_field_name(key):
+            object.__setattr__(self, key, value)
+            return
+
+        self._check_frozen(key, value)
+        attr = getattr(self.__class__, key, None)
+        if isinstance(attr, property):
+            attr.__set__(self, value)
+        return super().__setattr__(key, value)
+
+    def _check_frozen(self, key, value):
+        if self.dataclass_config.frozen:
+            typ = 'frozen_instance'
+        elif getattr(self.dataclass_fields.get(key), 'frozen', False):
+            typ = 'frozen_field'
+        else:
+            return
+        err: ErrorDetail = ErrorDetail([key], value, typ, '冻结字段无法修改')
+        raise ValidationError(title=self.__class__.__name__, line_errors=[err])

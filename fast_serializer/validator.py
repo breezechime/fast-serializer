@@ -66,7 +66,7 @@ class StringValidator(Validator):
         super().__init__(**kwargs)
         self.allow_number = allow_number
 
-    def validate(self, value, allow_number: bool = None) -> str:
+    def validate(self, value, allow_number: optional[bool] = None) -> str:
         self.allow_number = self.allow_number if allow_number is None else allow_number
         maybe_str = self.maybe_str(value)
         if maybe_str:
@@ -87,14 +87,16 @@ class StringValidator(Validator):
             except UnicodeDecodeError:
                 if not raise_error:
                     return False
-                raise DataclassCustomError('string_unicode', '输入应为有效字符串，不能将原始数据解析为unicode字符串')
-        return None
+                raise DataclassCustomError(
+                    'string_unicode',
+                    '输入应为有效字符串，不能将原始数据解析为unicode字符串'
+                )
 
 
 class BoolValidator(Validator):
     """布尔验证器"""
 
-    validator_name = 'bool'
+    validator_name: str = 'bool'
     annotation = bool
 
     def validate(self, value) -> bool:
@@ -128,11 +130,11 @@ class BoolValidator(Validator):
 class IntegerValidator(Validator):
     """整型验证器"""
 
-    validator_name = 'int'
+    validator_name: str = 'int'
     annotation = int
-    half_adjust_value = 0.11
+    half_adjust_value: float = 0.11
 
-    def validate(self, value):
+    def validate(self, value) -> int:
         if isinstance_safe(value, self.annotation):
             return value
         try:
@@ -158,7 +160,7 @@ class IntegerValidator(Validator):
     def str_to_int(value: str):
         return IntegerValidator.annotation(value)
 
-    def float_or_decimal_to_int(self, value: float, is_decimal: bool = False):
+    def float_or_decimal_to_int(self, value: float, is_decimal: bool = False) -> int:
         # 四舍五入容差
         integer_part = self.annotation(value)
         maybe_int = self.annotation(self.annotation(value + self.half_adjust_value if not is_decimal
@@ -173,10 +175,10 @@ class IntegerValidator(Validator):
 class FloatValidator(Validator):
     """浮点验证器"""
 
-    validator_name = 'float'
+    validator_name: str = 'float'
     annotation = float
 
-    def validate(self, value):
+    def validate(self, value) -> float:
         if isinstance_safe(value, self.annotation):
             return value
         elif isinstance_safe(value, IntegerValidator.annotation):
@@ -198,7 +200,7 @@ class DecimalValidator(FloatValidator):
     validator_name = 'decimal'
     annotation = Decimal
 
-    def validate(self, value):
+    def validate(self, value) -> Decimal:
         if isinstance_safe(value, self.annotation):
             return value
         elif isinstance_safe(value, IntegerValidator.annotation):
@@ -221,7 +223,7 @@ class BytesValidator(Validator):
     validator_name = 'bytes'
     annotation = bytes
 
-    def validate(self, value):
+    def validate(self, value) -> bytes:
         if isinstance_safe(value, self.annotation):
             return value
         elif isinstance_safe(value, StringValidator.annotation):
@@ -285,7 +287,7 @@ class OptionalValidator(Validator):
         super().__init__(**kwargs)
         self.validator = validator
 
-    def validate(self, value):
+    def validate(self, value) -> optional[Any]:
         if value is None:
             return value
         return self.validator.validate(value)
@@ -463,7 +465,7 @@ class DictValidator(Validator):
         self.min_length = min_length
         self.max_length = max_length
 
-    def validate(self, value):
+    def validate(self, value) -> dict:
         if not isinstance_safe(value, Mapping):
             raise DataclassCustomError('dict_type', '输入应为有效键值对')
         # 验证长度
@@ -708,7 +710,7 @@ class SetValidator(Validator):
         self.min_length = min_length
         self.max_length = max_length
 
-    def validate(self, value):
+    def validate(self, value) -> set:
         collection = extract_collection(value, 'set_type', '集合')
         # 检查长度
         check_collection_length(self.annotation, len(collection), self.min_length, self.max_length)
@@ -753,7 +755,7 @@ class FrozenValidator(Validator):
         self.min_length = min_length
         self.max_length = max_length
 
-    def validate(self, value):
+    def validate(self, value) -> frozenset:
         collection = extract_collection(value, 'frozenset_type', '冻结集合')
         # 检查长度
         check_collection_length(self.annotation, len(collection), self.min_length, self.max_length)
@@ -1119,7 +1121,7 @@ class DatetimeValidator(Validator):
     """时间戳长度"""
     timestamp_length = len(StringValidator.annotation(int(compare_timestamp)))
 
-    def validate(self, value):
+    def validate(self, value) -> datetime.datetime:
         if isinstance_safe(value, self.annotation):
             return value
         elif isinstance_safe(value, DateValidator.annotation):
@@ -1238,7 +1240,7 @@ class TimeValidator(Validator):
         super().__init__(**kwargs)
         self.mode = mode
 
-    def validate(self, value):
+    def validate(self, value) -> datetime.time:
         if isinstance_safe(value, self.annotation):
             return value
         if isinstance_safe(value, DatetimeValidator.annotation):
@@ -1291,7 +1293,7 @@ class TimedeltaValidator(Validator):
     validator_name = 'timedelta'
     annotation = datetime.timedelta
 
-    def validate(self, value):
+    def validate(self, value) -> datetime.timedelta:
         if isinstance_safe(value, self.annotation):
             return value
         elif isinstance_safe(value, (IntegerValidator.annotation, FloatValidator.annotation)):
@@ -1339,7 +1341,7 @@ class DateValidator(Validator):
 
     annotation = datetime.date
 
-    def validate(self, value):
+    def validate(self, value) -> datetime.date:
         if isinstance_safe(value, self.annotation):
             return value
         elif isinstance_safe(value, DatetimeValidator.annotation):
@@ -1370,7 +1372,7 @@ class IntEnumValidator(Validator):
         self.enum_class = enum_class
         self.values = [i.value for i in self.enum_class]
 
-    def validate(self, value):
+    def validate(self, value) -> enum.IntEnum:
         if isinstance_safe(value, self.annotation):
             return value
         try:
@@ -1407,7 +1409,7 @@ class EnumValidator(Validator):
         self.use_value = use_value
         self.values = [i.value if self.use_value else i.name for i in self.enum_class]
 
-    def validate(self, value):
+    def validate(self, value) -> enum.Enum:
         if isinstance_safe(value, self.enum_class):
             return value
         # 很优的方案，intEnum传递为str时也正确转换
@@ -1475,7 +1477,7 @@ class UuidValidator(Validator):
         return res
 
 
-def matching_validator(annotation: _T, **kwargs):
+def matching_validator(annotation: _T, **kwargs) -> Validator:
     """匹配验证器"""
     origin_annotation = type_parser.get_origin_safe(annotation) or annotation
     # Optional原型为Union不放在上面会变成Union验证器
@@ -1509,7 +1511,7 @@ def validate_iter_with_catch(
     errs: List[ErrorDetail],
     exception_type: optional[str] = None,
     errmsg: optional[str] = None
-):
+) -> optional[Any]:
     """捕捉异常"""
     try:
         return val.validate(v)
